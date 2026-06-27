@@ -8,7 +8,7 @@ import math
 from pathlib import Path
 import random
 import shutil
-from typing import Any
+from typing import Any, Callable
 
 import yaml
 
@@ -32,7 +32,13 @@ BUILD_REPORT_FIELDS = (
 )
 
 
-def preview_dataset_build(options: dict[str, Any]) -> dict[str, Any]:
+def preview_dataset_build(
+    options: dict[str, Any],
+    *,
+    progress_callback: Callable[[int, str], None] | None = None,
+    log_callback: Callable[[str], None] | None = None,
+    cancel_callback: Callable[[], bool] | None = None,
+) -> dict[str, Any]:
     """Validate inputs and estimate a build without writing files."""
     result: dict[str, Any] = {
         "errors": [],
@@ -47,8 +53,17 @@ def preview_dataset_build(options: dict[str, Any]) -> dict[str, Any]:
         "will_overwrite": False,
         "class_names": {},
         "base_root": "",
+        "cancelled": False,
     }
-    base, error = load_base_dataset(options.get("base_data_yaml", ""))
+    _progress(progress_callback, 0, "Previewing...")
+    _log(log_callback, "Scanning base dataset...")
+    base, error = load_base_dataset(
+        options.get("base_data_yaml", ""),
+        cancel_callback=cancel_callback,
+    )
+    if error == "Operation cancelled.":
+        result["cancelled"] = True
+        return result
     if error:
         result["errors"].append(error)
         return result
@@ -58,6 +73,16 @@ def preview_dataset_build(options: dict[str, Any]) -> dict[str, Any]:
     result["base_labels"] = sum(
         1 for split in SPLITS for image in base["images"][split] if label_for_image(image).is_file()
     )
+    _log(
+        log_callback,
+        f"Base dataset scan: {result['base_images']} image(s), {result['base_labels']} label(s).",
+    )
+    missing_base_labels = result["base_images"] - result["base_labels"]
+    if missing_base_labels > 0:
+        _log(log_callback, f"WARNING: {missing_base_labels} base dataset image(s) have no label file.")
+    if _cancelled(cancel_callback):
+        result["cancelled"] = True
+        return result
 
     ratios, ratio_error = _validated_ratios(options)
     if ratio_error:
@@ -73,6 +98,7 @@ def preview_dataset_build(options: dict[str, Any]) -> dict[str, Any]:
 
     rows: list[dict[str, str]] = []
     if options.get("include_hard_cases", True):
+        _log(log_callback, "Reading and filtering hard-cases report...")
         rows, report_error = read_hard_cases_report(options.get("hard_cases_report", ""))
         if report_error:
             result["errors"].append(report_error)
@@ -99,12 +125,28 @@ def preview_dataset_build(options: dict[str, Any]) -> dict[str, Any]:
     result["selected_hard_cases"] = len(eligible)
     if ratios:
         result["hard_case_split_counts"] = allocate_split_counts(len(eligible), ratios)
+    _log(
+        log_callback,
+        f"Hard cases selected: {len(eligible)}; skipped: {result['skipped_samples']}; missing labels: {result['missing_labels']}.",
+    )
+    _progress(progress_callback, 100, "Preview completed")
     return result
 
 
-def build_dataset(options: dict[str, Any]) -> dict[str, Any]:
+def build_dataset(
+    options: dict[str, Any],
+    *,
+    progress_callback: Callable[[int, str], None] | None = None,
+    log_callback: Callable[[str], None] | None = None,
+    cancel_callback: Callable[[], bool] | None = None,
+) -> dict[str, Any]:
     """Build a new YOLO dataset version without modifying the base dataset."""
-    preview = preview_dataset_build(options)
+    preview = preview_dataset_build(
+        options,
+        progress_callback=lambda _value, status: _progress(progress_callback, 2, status),
+        log_callback=log_callback,
+        cancel_callback=cancel_callback,
+    )
     result: dict[str, Any] = {
         **preview,
         "output_folder": None,
@@ -117,10 +159,14 @@ def build_dataset(options: dict[str, Any]) -> dict[str, Any]:
         "train_count": 0,
         "val_count": 0,
         "test_count": 0,
+        "cancelled": bool(preview.get("cancelled", False)),
     }
-    if result["errors"]:
+    if result["errors"] or result["cancelled"]:
         return result
-    base, error = load_base_dataset(options.get("base_data_yaml", ""))
+    base, error = load_base_dataset(options.get("base_data_yaml", ""), cancel_callback=cancel_callback)
+    if error == "Operation cancelled.":
+        result["cancelled"] = True
+        return result
     if error:
         result["errors"].append(error)
         return result
@@ -140,20 +186,33 @@ def build_dataset(options: dict[str, Any]) -> dict[str, Any]:
         except OSError as exc:
             result["errors"].append(f"Unable to clear output folder: {exc}")
             return result
+    if _cancelled(cancel_callback):
+        result["cancelled"] = True
+        return result
     try:
         for split in SPLITS:
             (output / "images" / split).mkdir(parents=True, exist_ok=True)
             (output / "labels" / split).mkdir(parents=True, exist_ok=True)
         output = output.resolve()
         result["output_folder"] = output
+        _log(log_callback, f"Output dataset folder created: {output}")
     except OSError as exc:
         result["errors"].append(f"Unable to create output dataset: {exc}")
         return result
 
     report_rows: list[dict[str, Any]] = []
+    base_units = sum(len(base["images"][split]) for split in SPLITS) if (options.get("copy_original_images", True) or options.get("copy_original_labels", True)) else 0
+    hard_units = int(preview.get("selected_hard_cases", 0))
+    total_units = max(1, base_units + hard_units + 3)
+    completed_units = 0
     if options.get("copy_original_images", True) or options.get("copy_original_labels", True):
+        _progress(progress_callback, 3, "Copying base dataset...")
         for split in SPLITS:
             for image in base["images"][split]:
+                if _cancelled(cancel_callback):
+                    result["cancelled"] = True
+                    _log(log_callback, "Build cancelled while copying base dataset.")
+                    return result
                 label = label_for_image(image)
                 destination_image, destination_label = destination_pair(output, split, image, "base")
                 copied_image = copied_label = False
@@ -179,6 +238,11 @@ def build_dataset(options: dict[str, Any]) -> dict[str, Any]:
                         copied_image or copied_label, " ".join(notes),
                     )
                 )
+                completed_units += 1
+                if completed_units % 25 == 0 or completed_units == base_units:
+                    _progress(progress_callback, _build_percent(completed_units, total_units), "Copying base dataset...")
+                if completed_units % 500 == 0 or completed_units == base_units:
+                    _log(log_callback, f"Base dataset copy progress: {completed_units}/{base_units} image pair(s) processed.")
 
     hard_rows: list[dict[str, str]] = []
     if options.get("include_hard_cases", True):
@@ -207,7 +271,13 @@ def build_dataset(options: dict[str, Any]) -> dict[str, Any]:
     ratios, _ratio_error = _validated_ratios(options)
     split_counts = allocate_split_counts(len(prepared), ratios)
     split_sequence = [split for split in SPLITS for _ in range(split_counts[split])]
+    _log(log_callback, f"Copying {len(prepared)} selected hard case(s).")
     for (row, image, label, label_source), split in zip(prepared, split_sequence):
+        if _cancelled(cancel_callback):
+            result["cancelled"] = True
+            _log(log_callback, "Build cancelled while copying hard cases.")
+            return result
+        _progress(progress_callback, _build_percent(completed_units, total_units), "Copying hard cases...")
         destination_image, destination_label = destination_pair(output, split, image, "hardcase")
         copied_image, copy_error = _copy_file(image, destination_image)
         if copy_error:
@@ -240,6 +310,10 @@ def build_dataset(options: dict[str, Any]) -> dict[str, Any]:
                 label_source, copied_image, " ".join(notes),
             )
         )
+        completed_units += 1
+        hard_completed = completed_units - base_units
+        if hard_completed % 25 == 0 or hard_completed == len(prepared):
+            _log(log_callback, f"Hard-case copy progress: {hard_completed}/{len(prepared)} sample(s) processed.")
 
     result["total_missing_labels"] = preview["missing_labels"]
     for split in SPLITS:
@@ -248,7 +322,17 @@ def build_dataset(options: dict[str, Any]) -> dict[str, Any]:
     data_yaml = output / "data.yaml"
     report_csv = output / "dataset_build_report.csv"
     summary_json = output / "dataset_build_summary.json"
+    if _cancelled(cancel_callback):
+        result["cancelled"] = True
+        _log(log_callback, "Build cancelled before writing output files.")
+        return result
+    _progress(progress_callback, 92, "Writing data.yaml...")
     data_error = _write_data_yaml(data_yaml, output, base["names"])
+    if _cancelled(cancel_callback):
+        result["cancelled"] = True
+        _log(log_callback, "Build cancelled before writing reports.")
+        return result
+    _progress(progress_callback, 96, "Writing reports...")
     report_error = _write_build_report(report_csv, report_rows)
     summary = _build_summary(options, result, base["names"], data_yaml)
     summary_error = _write_json(summary_json, summary)
@@ -258,10 +342,22 @@ def build_dataset(options: dict[str, Any]) -> dict[str, Any]:
     result["data_yaml"] = data_yaml if not data_error else None
     result["report_csv"] = report_csv if not report_error else None
     result["summary_json"] = summary_json if not summary_error else None
+    if not result["errors"]:
+        _progress(progress_callback, 100, "Completed")
+        _log(
+            log_callback,
+            f"Copy summary: base images={result['total_base_images_copied']}, "
+            f"hard cases={result['total_hard_cases_copied']}, empty labels={result['total_empty_labels_created']}.",
+        )
+        _log(log_callback, f"Dataset build completed: {output}")
     return result
 
 
-def load_base_dataset(data_yaml: str | Path) -> tuple[dict[str, Any], str]:
+def load_base_dataset(
+    data_yaml: str | Path,
+    *,
+    cancel_callback: Callable[[], bool] | None = None,
+) -> tuple[dict[str, Any], str]:
     raw = str(data_yaml).strip()
     if not raw:
         return {}, "Base data.yaml path is empty."
@@ -285,6 +381,8 @@ def load_base_dataset(data_yaml: str | Path) -> tuple[dict[str, Any], str]:
         root = root_candidate.resolve() if root_candidate.is_absolute() else (path.parent / root_candidate).resolve()
     images: dict[str, list[Path]] = {split: [] for split in SPLITS}
     for split in SPLITS:
+        if _cancelled(cancel_callback):
+            return {}, "Operation cancelled."
         entry = payload.get(split)
         if entry is None:
             continue
@@ -298,9 +396,14 @@ def load_base_dataset(data_yaml: str | Path) -> tuple[dict[str, Any], str]:
                 if fallback.exists():
                     candidate = fallback
             if candidate.is_dir():
-                images[split].extend(
-                    file.resolve() for file in candidate.rglob("*") if file.is_file() and file.suffix.lower() in IMAGE_EXTENSIONS
-                )
+                try:
+                    for index, file in enumerate(candidate.rglob("*")):
+                        if index % 100 == 0 and _cancelled(cancel_callback):
+                            return {}, "Operation cancelled."
+                        if file.is_file() and file.suffix.lower() in IMAGE_EXTENSIONS:
+                            images[split].append(file.resolve())
+                except OSError as exc:
+                    return {}, f"Unable to scan base dataset split {split}: {exc}"
     return {"yaml": path.resolve(), "root": root, "names": names, "images": images}, ""
 
 
@@ -526,3 +629,32 @@ def _write_json(path: Path, payload: dict[str, Any]) -> str:
         return ""
     except (OSError, UnicodeError, TypeError, ValueError) as exc:
         return f"Unable to write dataset_build_summary.json: {exc}"
+
+
+def _cancelled(callback: Callable[[], bool] | None) -> bool:
+    if callback is None:
+        return False
+    try:
+        return bool(callback())
+    except Exception:
+        return False
+
+
+def _progress(callback: Callable[[int, str], None] | None, value: int, status: str) -> None:
+    if callback is not None:
+        try:
+            callback(max(0, min(100, int(value))), str(status))
+        except Exception:
+            pass
+
+
+def _log(callback: Callable[[str], None] | None, message: str) -> None:
+    if callback is not None:
+        try:
+            callback(str(message))
+        except Exception:
+            pass
+
+
+def _build_percent(completed: int, total: int) -> int:
+    return 3 + int(87 * max(0, completed) / max(1, total))

@@ -181,3 +181,9 @@ Predict with save_txt/save_conf
 ```
 
 Dataset Builder does not replace human review. Prediction labels may contain incorrect boxes, an empty label intentionally treats an image as a negative sample, and collision renaming changes filenames in the new version while keeping image/label stems aligned.
+
+### v0.6.1 background worker
+
+Dataset Builder runs both **Preview Build** and **Build Dataset** in a PySide6 background worker. Large scans and file copies report live status, progress, and log messages while the application remains responsive. During a build, Preview and Build are disabled and **Cancel Build** remains available.
+
+Cancellation is cooperative: the worker stops at the next safe checkpoint and does not report success or write a completed summary after cancellation. Files already copied are intentionally left in the output folder. For large datasets, use a new empty output folder; when **Overwrite output folder** is disabled, an existing output folder blocks the build without replacing its contents.

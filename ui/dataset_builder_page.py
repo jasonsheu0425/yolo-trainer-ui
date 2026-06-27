@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QProgressBar,
     QScrollArea,
     QTextEdit,
     QVBoxLayout,
@@ -22,7 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.config_manager import ConfigManager
-from core.dataset_builder import build_dataset, preview_dataset_build
+from core.dataset_builder_worker import DatasetBuilderWorker
 from core.report_reader import CATEGORY_FILTERS, FILTER_MODES
 from ui.widgets import PageHeader, PathPicker
 
@@ -34,6 +35,9 @@ class DatasetBuilderPage(QWidget):
         super().__init__(parent)
         self.config = config
         self.last_result: dict | None = None
+        self.worker_thread: QThread | None = None
+        self.worker: DatasetBuilderWorker | None = None
+        self.worker_mode = ""
 
         page_layout = QVBoxLayout(self)
         page_layout.setContentsMargins(0, 0, 0, 0)
@@ -99,20 +103,32 @@ class DatasetBuilderPage(QWidget):
         layout.addWidget(options_box)
 
         buttons = QHBoxLayout()
-        preview_button = QPushButton("Preview Build")
-        preview_button.setObjectName("primaryButton")
-        build_button = QPushButton("Build Dataset")
+        self.preview_button = QPushButton("Preview Build")
+        self.preview_button.setObjectName("primaryButton")
+        self.build_button = QPushButton("Build Dataset")
+        self.cancel_button = QPushButton("Cancel Build")
+        self.cancel_button.setEnabled(False)
         self.open_output_button = QPushButton("Open Output Folder")
         self.open_output_button.setEnabled(False)
         clear_button = QPushButton("Clear Log")
-        preview_button.clicked.connect(self.preview_build)
-        build_button.clicked.connect(self.build)
+        self.preview_button.clicked.connect(self.preview_build)
+        self.build_button.clicked.connect(self.build)
+        self.cancel_button.clicked.connect(self.cancel_build)
         self.open_output_button.clicked.connect(lambda: self._open_path("output_folder", folder=True))
         clear_button.clicked.connect(lambda: self.log.clear())
-        for button in (preview_button, build_button, self.open_output_button, clear_button):
+        for button in (self.preview_button, self.build_button, self.cancel_button, self.open_output_button, clear_button):
             buttons.addWidget(button)
         buttons.addStretch()
         layout.addLayout(buttons)
+
+        progress_row = QHBoxLayout()
+        self.status_label = QLabel("Idle")
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        progress_row.addWidget(self.status_label)
+        progress_row.addWidget(self.progress_bar, 1)
+        layout.addLayout(progress_row)
 
         self.preview_summary = QLabel("Not previewed")
         self.preview_summary.setWordWrap(True)
@@ -216,8 +232,7 @@ class DatasetBuilderPage(QWidget):
         }
 
     def preview_build(self) -> None:
-        preview = preview_dataset_build(self._options())
-        self._display_preview(preview)
+        self._start_worker("preview")
 
     def _display_preview(self, preview: dict) -> None:
         for warning in preview.get("warnings", []):
@@ -234,11 +249,91 @@ class DatasetBuilderPage(QWidget):
         )
 
     def build(self) -> None:
-        result = build_dataset(self._options())
-        self.last_result = result
+        self._start_worker("build")
+
+    def _start_worker(self, mode: str) -> None:
+        if self.worker_thread is not None and self.worker_thread.isRunning():
+            return
+        self.worker_mode = mode
+        self.preview_button.setEnabled(False)
+        self.build_button.setEnabled(False)
+        self.cancel_button.setEnabled(True)
+        self.status_label.setText("Previewing..." if mode == "preview" else "Preparing...")
+        if mode == "preview":
+            self.progress_bar.setRange(0, 0)
+        else:
+            self.progress_bar.setRange(0, 100)
+            self.progress_bar.setValue(0)
+
+        thread = QThread(self)
+        worker = DatasetBuilderWorker(mode, self._options())
+        self.worker_thread = thread
+        self.worker = worker
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.progress.connect(self._worker_progress)
+        worker.log.connect(lambda message: self._append_log(f"{message}\n"))
+        worker.finished.connect(self._worker_finished)
+        worker.cancelled.connect(self._worker_cancelled)
+        worker.failed.connect(self._worker_failed)
+        worker.finished.connect(thread.quit)
+        worker.cancelled.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        worker.cancelled.connect(worker.deleteLater)
+        worker.failed.connect(worker.deleteLater)
+        thread.finished.connect(self._thread_finished)
+        thread.finished.connect(thread.deleteLater)
+        thread.start()
+
+    def cancel_build(self) -> None:
+        if self.worker is None or self.worker_thread is None or not self.worker_thread.isRunning():
+            return
+        self.worker.cancel()
+        self.cancel_button.setEnabled(False)
+        self.status_label.setText("Cancelling...")
+        self._append_log("Cancellation requested by user.\n")
+
+    def _worker_progress(self, value: int, status: str) -> None:
+        self.status_label.setText(status)
+        if self.worker_mode == "build":
+            self.progress_bar.setRange(0, 100)
+            self.progress_bar.setValue(value)
+
+    def _worker_finished(self, result: dict) -> None:
+        self.progress_bar.setRange(0, 100)
         self._display_preview(result)
+        if self.worker_mode == "build":
+            self._display_build_result(result)
         if result.get("errors"):
-            QMessageBox.warning(self, "Dataset Builder", "Dataset build did not complete. Check the log for details.")
+            self.status_label.setText("Failed")
+            QMessageBox.warning(self, "Dataset Builder", "Dataset operation did not complete. Check the log for details.")
+        else:
+            self.status_label.setText("Completed")
+            self.progress_bar.setValue(100)
+
+    def _worker_cancelled(self, result: dict) -> None:
+        self.last_result = result if self.worker_mode == "build" else self.last_result
+        self.progress_bar.setRange(0, 100)
+        self.status_label.setText("Cancelled")
+        self._append_log("Build cancelled by user.\n")
+
+    def _worker_failed(self, message: str) -> None:
+        self.progress_bar.setRange(0, 100)
+        self.status_label.setText("Failed")
+        self._append_log(f"ERROR: {message}\n")
+        QMessageBox.warning(self, "Dataset Builder", "Dataset operation failed. Check the log for details.")
+
+    def _thread_finished(self) -> None:
+        self.preview_button.setEnabled(True)
+        self.build_button.setEnabled(True)
+        self.cancel_button.setEnabled(False)
+        self.worker = None
+        self.worker_thread = None
+        self.worker_mode = ""
+
+    def _display_build_result(self, result: dict) -> None:
+        self.last_result = result
         for key, value in self.result_values.items():
             path = result.get(key)
             value.setText(str(path) if path else "Not found")
@@ -254,6 +349,13 @@ class DatasetBuilderPage(QWidget):
         if data_yaml:
             self._append_log(f"Dataset build complete: {output}\nNew data.yaml: {data_yaml}\n")
 
+    def shutdown(self) -> None:
+        if self.worker is None or self.worker_thread is None or not self.worker_thread.isRunning():
+            return
+        self.worker.cancel()
+        self.worker_thread.quit()
+        self.worker_thread.wait()
+
     def use_in_train(self) -> None:
         if not self.last_result or not self.last_result.get("data_yaml"):
             QMessageBox.information(self, "Dataset Builder", "Build a dataset first.")
@@ -267,7 +369,10 @@ class DatasetBuilderPage(QWidget):
         path = Path(self.last_result[field])
         target = path if folder else path
         if target.exists():
-            os.startfile(target)  # type: ignore[attr-defined]
+            try:
+                os.startfile(target)  # type: ignore[attr-defined]
+            except OSError as exc:
+                QMessageBox.warning(self, "Dataset Builder", f"Unable to open file or folder: {exc}")
         else:
             QMessageBox.information(self, "Dataset Builder", "File or folder not found.")
 

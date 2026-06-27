@@ -82,6 +82,7 @@ class MainWindow(QMainWindow):
         self.navigation.setCurrentRow(0)
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
+        self.dataset_builder_page.shutdown()
         if self.train_page.runner.running:
             self.train_page.runner.stop()
         if self.export_page.runner.running:
