@@ -3,13 +3,17 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDoubleSpinBox,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QScrollArea,
@@ -22,7 +26,47 @@ from PySide6.QtWidgets import (
 
 from core.config_manager import ConfigManager
 from core.error_miner import export_hard_cases, scan_error_cases
+from core.report_reader import CATEGORY_FILTERS, filter_report, read_hard_cases_report, summarize_report
 from ui.widgets import PageHeader, PathPicker
+
+
+class ImagePreviewLabel(QLabel):
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__("Image not selected", parent)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setMinimumSize(420, 240)
+        self._source_pixmap: QPixmap | None = None
+
+    def set_image(self, path: Path | None) -> bool:
+        if path is None or not path.is_file():
+            self._source_pixmap = None
+            self.clear()
+            self.setText("Image not found")
+            return False
+        pixmap = QPixmap(str(path))
+        if pixmap.isNull():
+            self._source_pixmap = None
+            self.clear()
+            self.setText("Image not found")
+            return False
+        self._source_pixmap = pixmap
+        self._update_scaled_pixmap()
+        return True
+
+    def _update_scaled_pixmap(self) -> None:
+        if self._source_pixmap is None:
+            return
+        self.setPixmap(
+            self._source_pixmap.scaled(
+                self.size(),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
+
+    def resizeEvent(self, event) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        self._update_scaled_pixmap()
 
 
 class ErrorMiningPage(QWidget):
@@ -31,6 +75,9 @@ class ErrorMiningPage(QWidget):
         self.config = config
         self.scan_result: dict | None = None
         self.export_folder: Path | None = None
+        self.report_rows: list[dict[str, str]] = []
+        self.filtered_report_rows: list[dict[str, str]] = []
+        self.selected_report_row: dict[str, str] | None = None
 
         page_layout = QVBoxLayout(self)
         page_layout.setContentsMargins(0, 0, 0, 0)
@@ -137,9 +184,86 @@ class ErrorMiningPage(QWidget):
         self.log.setMaximumHeight(150)
         self.log.setObjectName("console")
         layout.addWidget(self.log)
+        layout.addWidget(self._build_report_viewer())
+        self.output_folder.path_changed.connect(self._suggest_report_path)
 
     def apply_settings(self, values: dict) -> None:
         self.config.settings.update(values)
+
+    def _build_report_viewer(self) -> QGroupBox:
+        box = QGroupBox("Error Mining Report Viewer")
+        layout = QVBoxLayout(box)
+        self.report_picker = PathPicker("hard_cases_report.csv", "CSV (*.csv)")
+        layout.addWidget(self.report_picker)
+
+        controls = QHBoxLayout()
+        load_button = QPushButton("Load Report")
+        load_button.setObjectName("primaryButton")
+        load_button.clicked.connect(self.load_report)
+        controls.addWidget(load_button)
+        controls.addWidget(QLabel("Category"))
+        self.report_category = QComboBox()
+        self.report_category.addItems(["All", *CATEGORY_FILTERS])
+        controls.addWidget(self.report_category)
+        self.report_search = QLineEdit()
+        self.report_search.setPlaceholderText("Search image, category, flags, or notes")
+        controls.addWidget(self.report_search, 1)
+        layout.addLayout(controls)
+
+        self.report_summary = QLabel("Report not loaded")
+        self.report_summary.setWordWrap(True)
+        layout.addWidget(self.report_summary)
+        self.report_table_fields = (
+            "image_name",
+            "primary_category",
+            "all_error_flags",
+            "detection_count",
+            "ground_truth_count",
+            "min_confidence",
+            "max_iou",
+            "false_negative_count",
+            "false_positive_count",
+            "class_mismatch_count",
+            "low_iou_count",
+            "low_confidence_count",
+            "copied_to",
+            "notes",
+        )
+        self.report_table = QTableWidget(0, len(self.report_table_fields))
+        self.report_table.setHorizontalHeaderLabels(list(self.report_table_fields))
+        self.report_table.setMinimumHeight(240)
+        self.report_table.horizontalHeader().setStretchLastSection(True)
+        self.report_table.itemSelectionChanged.connect(self._report_row_selected)
+        layout.addWidget(self.report_table)
+
+        preview_row = QHBoxLayout()
+        self.image_preview = ImagePreviewLabel()
+        preview_row.addWidget(self.image_preview, 1)
+        self.report_details = QTextEdit()
+        self.report_details.setReadOnly(True)
+        self.report_details.setMinimumHeight(240)
+        preview_row.addWidget(self.report_details, 1)
+        layout.addLayout(preview_row)
+
+        actions = QHBoxLayout()
+        open_image = QPushButton("Open Image")
+        open_image_folder = QPushButton("Open Image Folder")
+        open_prediction = QPushButton("Open Prediction Label")
+        open_ground_truth = QPushButton("Open Ground Truth Label")
+        open_hard_cases = QPushButton("Open Hard Cases Folder")
+        open_image.clicked.connect(self.open_report_image)
+        open_image_folder.clicked.connect(self.open_report_image_folder)
+        open_prediction.clicked.connect(lambda: self.open_report_label("prediction_label_path"))
+        open_ground_truth.clicked.connect(lambda: self.open_report_label("ground_truth_label_path"))
+        open_hard_cases.clicked.connect(self.open_report_hard_cases_folder)
+        for button in (open_image, open_image_folder, open_prediction, open_ground_truth, open_hard_cases):
+            actions.addWidget(button)
+        actions.addStretch()
+        layout.addLayout(actions)
+
+        self.report_category.currentTextChanged.connect(self._apply_report_filter)
+        self.report_search.textChanged.connect(self._apply_report_filter)
+        return box
 
     def scan(self) -> None:
         run = Path(self.run_folder.path())
@@ -211,6 +335,9 @@ class ErrorMiningPage(QWidget):
             self._summary_text(result.get("records", []))
             + f"\nOutput folder: {self.export_folder or 'Not found'}"
         )
+        if result.get("report_csv"):
+            self.report_picker.set_path(str(result["report_csv"]))
+            self.load_report()
 
     def _show_scan_result(self) -> None:
         if self.scan_result is None:
@@ -272,6 +399,135 @@ class ErrorMiningPage(QWidget):
             f"low confidence: {totals['low_confidence']} | no detection: {flags.count('no_detection')} | "
             f"no label: {flags.count('no_label_file')} | unknown: {flags.count('unknown')}"
         )
+
+    def _suggest_report_path(self, output_folder: str) -> None:
+        try:
+            candidate = Path(output_folder) / "hard_cases_report.csv"
+            if candidate.is_file():
+                self.report_picker.set_path(str(candidate))
+        except (OSError, ValueError):
+            return
+
+    def load_report(self) -> None:
+        rows, error = read_hard_cases_report(self.report_picker.path())
+        if error:
+            self.report_rows = []
+            self.filtered_report_rows = []
+            self.selected_report_row = None
+            self.report_table.setRowCount(0)
+            self.report_summary.setText(error)
+            self.image_preview.set_image(None)
+            self.report_details.clear()
+            self._append_log(f"ERROR: {error}\n")
+            return
+        self.report_rows = rows
+        self._apply_report_filter()
+        self._append_log(f"Loaded report: {self.report_picker.path()} ({len(rows)} row(s))\n")
+
+    def _apply_report_filter(self, *_args) -> None:
+        self.filtered_report_rows = filter_report(
+            self.report_rows,
+            self.report_category.currentText(),
+            self.report_search.text(),
+        )
+        self.report_table.setRowCount(len(self.filtered_report_rows))
+        for row_index, row in enumerate(self.filtered_report_rows):
+            for column, field in enumerate(self.report_table_fields):
+                self.report_table.setItem(row_index, column, QTableWidgetItem(str(row.get(field, ""))))
+        summary = summarize_report(self.report_rows)
+        counts = " | ".join(f"{category}: {summary[category]}" for category in CATEGORY_FILTERS)
+        self.report_summary.setText(
+            f"Total rows: {summary['total_rows']} | Filtered rows: {len(self.filtered_report_rows)}\n{counts}"
+        )
+        if self.filtered_report_rows:
+            self.report_table.selectRow(0)
+        else:
+            self.selected_report_row = None
+            self.image_preview.set_image(None)
+            self.report_details.clear()
+
+    def _report_row_selected(self) -> None:
+        row_index = self.report_table.currentRow()
+        if not 0 <= row_index < len(self.filtered_report_rows):
+            self.selected_report_row = None
+            self.image_preview.set_image(None)
+            self.report_details.clear()
+            return
+        self.selected_report_row = self.filtered_report_rows[row_index]
+        self.image_preview.set_image(self._selected_image_path())
+        fields = (
+            "image_name",
+            "primary_category",
+            "all_error_flags",
+            "min_confidence",
+            "max_iou",
+            "copied_to",
+            "image_path",
+            "prediction_label_path",
+            "ground_truth_label_path",
+        )
+        self.report_details.setPlainText(
+            "\n".join(f"{field}: {self.selected_report_row.get(field, '')}" for field in fields)
+        )
+
+    def _selected_image_path(self) -> Path | None:
+        if self.selected_report_row is None:
+            return None
+        for field in ("copied_to", "image_path"):
+            path = self._existing_report_path(field)
+            if path is not None:
+                return path
+        return None
+
+    def _existing_report_path(self, field: str) -> Path | None:
+        if self.selected_report_row is None:
+            return None
+        raw = str(self.selected_report_row.get(field, "")).strip()
+        if not raw:
+            return None
+        try:
+            path = Path(raw).expanduser()
+            return path.resolve() if path.is_file() else None
+        except (OSError, ValueError):
+            return None
+
+    def open_report_image(self) -> None:
+        path = self._selected_image_path()
+        if path is None:
+            QMessageBox.information(self, "Report Viewer", "Image not found.")
+            return
+        os.startfile(path)  # type: ignore[attr-defined]
+
+    def open_report_image_folder(self) -> None:
+        path = self._selected_image_path()
+        if path is None or not path.parent.is_dir():
+            QMessageBox.information(self, "Report Viewer", "Image folder not found.")
+            return
+        os.startfile(path.parent)  # type: ignore[attr-defined]
+
+    def open_report_label(self, field: str) -> None:
+        path = self._existing_report_path(field)
+        if path is None:
+            QMessageBox.information(self, "Report Viewer", "Label not found.")
+            return
+        os.startfile(path)  # type: ignore[attr-defined]
+
+    def open_report_hard_cases_folder(self) -> None:
+        candidates: list[Path] = []
+        if self.report_picker.path():
+            candidates.append(Path(self.report_picker.path()).expanduser().parent)
+        if self.export_folder:
+            candidates.append(self.export_folder)
+        if self.output_folder.path():
+            candidates.append(Path(self.output_folder.path()).expanduser())
+        for path in candidates:
+            try:
+                if path.is_dir():
+                    os.startfile(path)  # type: ignore[attr-defined]
+                    return
+            except (OSError, ValueError):
+                continue
+        QMessageBox.information(self, "Report Viewer", "Hard cases folder not found.")
 
     def open_hard_cases_folder(self) -> None:
         if self.export_folder and self.export_folder.is_dir():
