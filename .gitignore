@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.py[cod]
+runs/
+.idea/
+.vscode/
+configs/app_settings.json
+*.pt
+*.onnx
+*.engine
+*.mlpackage/
+*_openvino_model/
+*_saved_model/

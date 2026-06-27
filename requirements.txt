@@ -1,0 +1,9 @@
+PySide6
+ultralytics
+PyYAML
+psutil
+torch
+torchvision
+pandas
+matplotlib
+
