@@ -23,7 +23,13 @@ from PySide6.QtWidgets import (
 )
 
 from core.config_manager import ConfigManager
-from core.results_reader import VALIDATION_ARTIFACTS, read_validation_metrics, scan_validation_folder
+from core.results_reader import (
+    VALIDATION_ARTIFACTS,
+    parse_validation_log,
+    persist_validation_metrics,
+    read_validation_metrics,
+    scan_validation_folder,
+)
 from core.validator_process import ValidatorProcess
 from ui.widgets import PageHeader, PathPicker
 
@@ -284,17 +290,33 @@ class ValidatePage(QWidget):
             self.metrics_status.setText("Validation failed or output folder was not found.")
 
     def _load_results(self, folder: Path) -> None:
+        log_text = self.log.toPlainText()
+        metrics = read_validation_metrics(folder, log_text)
+        log_metrics = parse_validation_log(log_text)
+        saved_path, save_error = persist_validation_metrics(
+            folder,
+            log_metrics,
+            model=self.model.path(),
+            data=self.data.path(),
+            split=self.split.currentText(),
+            imgsz=self.imgsz.value(),
+            batch=self.batch.value(),
+            device=self.device.text().strip(),
+        )
+        if save_error:
+            self._append_log(f"ERROR: {save_error}\n")
         self.validation_artifacts = scan_validation_folder(folder)
         for name in VALIDATION_ARTIFACTS:
             path = self.validation_artifacts.get(name)
             self.artifact_values[name].setText(str(path) if path else "Not found")
             for button in self.artifact_buttons[name]:
                 button.setEnabled(path is not None)
-        metrics = read_validation_metrics(folder, self.log.toPlainText())
         for key, label in self.metric_values.items():
             value = metrics.get(key)
             label.setText(f"{value:.4f}" if isinstance(value, (int, float)) else "Not found")
-        self.metrics_status.setText(str(metrics.get("message") or f"Metrics source: {metrics.get('source', '')}"))
+        metrics_message = str(metrics.get("message") or f"Metrics source: {metrics.get('source', '')}")
+        save_message = f"Saved: {saved_path}" if saved_path else save_error
+        self.metrics_status.setText(f"{metrics_message} {save_message}".strip())
 
     def _clear_results(self) -> None:
         self.validation_artifacts = scan_validation_folder("")

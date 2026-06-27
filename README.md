@@ -101,3 +101,7 @@ class_id x_center y_center width height
 - **Validate / Evaluate**：使用 `.pt` 或 `.onnx` 模型對 `val` / `test` split 執行非阻塞 validation，顯示 metrics、輸出資料夾與常見 validation plots。
 - **Validation metrics fallback**：優先讀取 `results.csv`；standalone validation 沒有 CSV 時，會顯示提示並嘗試解析 Ultralytics log summary。
 - **Run Browser**：Monitor / Results 內可掃描 runs root，辨識 train、predict、val 或 unknown run，並顯示 weights、results.csv、最後 metrics 與時間。
+
+### v0.3.1 validation metrics persistence
+
+Completed validations save `validation_metrics.json` in their output folder. Run Browser reads `results.csv` first and falls back to this UTF-8 JSON file, so standalone validation metrics remain available after restarting the application.

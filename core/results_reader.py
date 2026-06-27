@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import json
 from pathlib import Path
 import re
 from typing import Any
@@ -31,6 +32,7 @@ VALIDATION_ARTIFACTS: dict[str, tuple[str, ...]] = {
     "F1_curve.png": ("F1_curve.png", "BoxF1_curve.png"),
     "val_batch0_labels.jpg": ("val_batch0_labels.jpg",),
     "val_batch0_pred.jpg": ("val_batch0_pred.jpg",),
+    "validation_metrics.json": ("validation_metrics.json",),
 }
 
 METRIC_ALIASES = {
@@ -108,25 +110,77 @@ def extract_metrics(frame: pd.DataFrame) -> dict[str, float | None]:
 
 
 def read_validation_metrics(run_folder: str | Path, log_text: str = "") -> dict[str, Any]:
-    """Read metrics from results.csv, falling back to an Ultralytics log summary."""
+    """Read results.csv, then persisted JSON, then the current validation log."""
     metrics: dict[str, Any] = {key: None for key in METRIC_ALIASES}
     root = Path(str(run_folder).strip()).expanduser() if str(run_folder).strip() else None
     results_path = root / "results.csv" if root and root.is_dir() else None
+    errors: list[str] = []
     if results_path and results_path.is_file():
         try:
             metrics.update(extract_metrics(read_results(results_path)))
             metrics.update(message="", source=str(results_path))
             return metrics
         except (OSError, ValueError, pd.errors.ParserError) as exc:
-            metrics.update(message=f"Unable to read metrics file: {exc}", source="")
+            errors.append(f"Unable to read results.csv: {exc}")
+    json_path = root / "validation_metrics.json" if root and root.is_dir() else None
+    if json_path and json_path.is_file():
+        try:
+            metrics.update(_read_validation_metrics_json(json_path))
+            metrics.update(message="", source=str(json_path))
             return metrics
+        except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+            errors.append(f"Unable to read validation_metrics.json: {exc}")
     parsed = parse_validation_log(log_text)
     if any(value is not None for value in parsed.values()):
         metrics.update(parsed)
         metrics.update(message="Metrics file not found. Values parsed from validation log.", source="log")
     else:
-        metrics.update(message="Metrics file not found.", source="")
+        metrics.update(message="; ".join(errors) if errors else "Metrics file not found.", source="")
     return metrics
+
+
+def persist_validation_metrics(
+    run_folder: str | Path,
+    metrics: dict[str, Any],
+    *,
+    model: str,
+    data: str,
+    split: str,
+    imgsz: int,
+    batch: int,
+    device: str,
+) -> tuple[Path | None, str]:
+    """Atomically save validation metadata; return an error instead of raising."""
+    root = Path(str(run_folder).strip()).expanduser() if str(run_folder).strip() else None
+    if root is None or not root.is_dir():
+        return None, "Validation metrics were not saved: output folder not found."
+    output_path = root / "validation_metrics.json"
+    temporary_path = root / ".validation_metrics.json.tmp"
+    payload = {
+        "precision": _optional_float(metrics.get("precision")),
+        "recall": _optional_float(metrics.get("recall")),
+        "mAP50": _optional_float(metrics.get("map50")),
+        "mAP50-95": _optional_float(metrics.get("map50_95")),
+        "source": "validation_log",
+        "model": str(model),
+        "data": str(data),
+        "split": str(split),
+        "imgsz": int(imgsz),
+        "batch": int(batch),
+        "device": str(device),
+        "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "output_folder": str(root.resolve()),
+    }
+    try:
+        temporary_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        temporary_path.replace(output_path)
+        return output_path, ""
+    except (OSError, TypeError, ValueError) as exc:
+        try:
+            temporary_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return None, f"Unable to save validation_metrics.json: {exc}"
 
 
 def parse_validation_log(log_text: str) -> dict[str, float | None]:
@@ -146,6 +200,28 @@ def parse_validation_log(log_text: str) -> dict[str, float | None]:
             continue
         return {"precision": precision, "recall": recall, "map50": map50, "map50_95": map50_95}
     return empty
+
+
+def _read_validation_metrics_json(path: Path) -> dict[str, float | None]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("JSON root must be an object.")
+    return {
+        "precision": _optional_float(payload.get("precision")),
+        "recall": _optional_float(payload.get("recall")),
+        "map50": _optional_float(payload.get("mAP50")),
+        "map50_95": _optional_float(payload.get("mAP50-95")),
+    }
+
+
+def _optional_float(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if pd.notna(number) else None
 
 
 def scan_runs(runs_root: str | Path) -> list[dict[str, Any]]:
