@@ -26,7 +26,13 @@ from PySide6.QtWidgets import (
 
 from core.config_manager import ConfigManager
 from core.error_miner import export_hard_cases, scan_error_cases
-from core.report_reader import CATEGORY_FILTERS, filter_report, read_hard_cases_report, summarize_report
+from core.report_reader import (
+    CATEGORY_FILTERS,
+    FILTER_MODES,
+    filter_report,
+    read_hard_cases_report,
+    summarize_report,
+)
 from ui.widgets import PageHeader, PathPicker
 
 
@@ -201,6 +207,11 @@ class ErrorMiningPage(QWidget):
         load_button.setObjectName("primaryButton")
         load_button.clicked.connect(self.load_report)
         controls.addWidget(load_button)
+        controls.addWidget(QLabel("Filter Mode"))
+        self.report_filter_mode = QComboBox()
+        self.report_filter_mode.addItems(list(FILTER_MODES))
+        self.report_filter_mode.setCurrentText("Primary or Any Flag")
+        controls.addWidget(self.report_filter_mode)
         controls.addWidget(QLabel("Category"))
         self.report_category = QComboBox()
         self.report_category.addItems(["All", *CATEGORY_FILTERS])
@@ -209,6 +220,12 @@ class ErrorMiningPage(QWidget):
         self.report_search.setPlaceholderText("Search image, category, flags, or notes")
         controls.addWidget(self.report_search, 1)
         layout.addLayout(controls)
+        filter_hint = QLabel(
+            "Primary Category Only: main category only | Any Error Flag: includes secondary flags | "
+            "Primary or Any Flag: searches both"
+        )
+        filter_hint.setWordWrap(True)
+        layout.addWidget(filter_hint)
 
         self.report_summary = QLabel("Report not loaded")
         self.report_summary.setWordWrap(True)
@@ -262,6 +279,7 @@ class ErrorMiningPage(QWidget):
         layout.addLayout(actions)
 
         self.report_category.currentTextChanged.connect(self._apply_report_filter)
+        self.report_filter_mode.currentTextChanged.connect(self._apply_report_filter)
         self.report_search.textChanged.connect(self._apply_report_filter)
         return box
 
@@ -429,15 +447,24 @@ class ErrorMiningPage(QWidget):
             self.report_rows,
             self.report_category.currentText(),
             self.report_search.text(),
+            self.report_filter_mode.currentText(),
         )
         self.report_table.setRowCount(len(self.filtered_report_rows))
         for row_index, row in enumerate(self.filtered_report_rows):
             for column, field in enumerate(self.report_table_fields):
                 self.report_table.setItem(row_index, column, QTableWidgetItem(str(row.get(field, ""))))
         summary = summarize_report(self.report_rows)
-        counts = " | ".join(f"{category}: {summary[category]}" for category in CATEGORY_FILTERS)
+        primary_counts = " | ".join(
+            f"{category}: {summary['primary_counts'][category]}" for category in CATEGORY_FILTERS
+        )
+        flag_counts = (
+            " | ".join(f"{category}: {summary['flag_counts'][category]}" for category in CATEGORY_FILTERS)
+            if summary["flags_available"]
+            else "Not available"
+        )
         self.report_summary.setText(
-            f"Total rows: {summary['total_rows']} | Filtered rows: {len(self.filtered_report_rows)}\n{counts}"
+            f"Total rows: {summary['total_rows']} | Filtered rows: {len(self.filtered_report_rows)}\n"
+            f"Primary Category Counts: {primary_counts}\nError Flag Counts: {flag_counts}"
         )
         if self.filtered_report_rows:
             self.report_table.selectRow(0)
