@@ -5,6 +5,7 @@ import sys
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication
 
+from core.version import APP_NAME
 from ui.main_window import MainWindow
 
 
@@ -83,8 +84,8 @@ QLabel[state="warning"] { background: #fef3c7; color: #92400e; border-radius: 6p
 
 def main() -> int:
     app = QApplication(sys.argv)
-    app.setApplicationName("YOLO Trainer UI")
-    app.setOrganizationName("YOLO Trainer UI")
+    app.setApplicationName(APP_NAME)
+    app.setOrganizationName(APP_NAME)
     app.setFont(QFont("Segoe UI", 10))
     app.setStyleSheet(STYLE)
     window = MainWindow()
@@ -94,4 +95,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -1,8 +1,10 @@
 {
-  "python_executable": "python",
   "yolo_command": "yolo",
+  "python_executable": "",
   "runs_folder": "runs/detect",
   "default_model": "yolov8n.pt",
   "default_device": "0",
-  "last_run_folder": ""
+  "last_run_folder": "",
+  "last_dataset_yaml": "",
+  "last_model_path": ""
 }

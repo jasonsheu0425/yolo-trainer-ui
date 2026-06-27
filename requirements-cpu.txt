@@ -1,0 +1,5 @@
+# Install the CPU builds of torch and torchvision first by following the
+# official PyTorch selector: https://pytorch.org/get-started/locally/
+# Then install this file. The preinstalled CPU packages satisfy the entries in
+# requirements.txt and prevent an unintended CUDA-specific choice.
+-r requirements.txt

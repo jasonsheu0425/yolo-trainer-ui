@@ -4,6 +4,7 @@ from PySide6.QtCore import QSize
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow, QStackedWidget, QVBoxLayout, QWidget
 
 from core.config_manager import ConfigManager
+from core.version import APP_NAME, APP_VERSION
 from ui.dataset_page import DatasetPage
 from ui.dataset_builder_page import DatasetBuilderPage
 from ui.error_mining_page import ErrorMiningPage
@@ -18,7 +19,7 @@ from ui.validate_page import ValidatePage
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("YOLO Trainer UI")
+        self.setWindowTitle(f"{APP_NAME} v{APP_VERSION}")
         self.resize(1280, 820)
         self.setMinimumSize(1050, 680)
         self.config = ConfigManager()
@@ -45,7 +46,7 @@ class MainWindow(QMainWindow):
             item.setSizeHint(QSize(0, 46))
             self.navigation.addItem(item)
         side_layout.addWidget(self.navigation, 1)
-        version = QLabel("Desktop training console")
+        version = QLabel(f"v{APP_VERSION} · Desktop console")
         version.setObjectName("sidebarCaption")
         side_layout.addWidget(version)
         outer.addWidget(sidebar)
