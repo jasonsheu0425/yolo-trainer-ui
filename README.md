@@ -95,3 +95,9 @@ class_id x_center y_center width height
 - **Last Run Summary**：Train 頁會記住最後一次 run folder，並列出 `best.pt`、`last.pt`、`results.csv`、`results.png` 與 `confusion_matrix.png`。可直接開啟檔案或其資料夾；不存在的產物會顯示 `Not found`。
 - **Predict / Test**：選擇 `.pt` / `.onnx` 模型與圖片、圖片資料夾或影片，設定 imgsz、conf、IoU、device 後執行非阻塞預測。完成後可直接開啟輸出資料夾。
 - **Training Presets**：Train 頁提供 Smoke Test、Small Dataset Conservative、Standard YOLOv8n 與 Higher Accuracy YOLOv8s。選取 preset 只會填入欄位，不會自動開始訓練。
+
+## Version 3 additions
+
+- **Validate / Evaluate**：使用 `.pt` 或 `.onnx` 模型對 `val` / `test` split 執行非阻塞 validation，顯示 metrics、輸出資料夾與常見 validation plots。
+- **Validation metrics fallback**：優先讀取 `results.csv`；standalone validation 沒有 CSV 時，會顯示提示並嘗試解析 Ultralytics log summary。
+- **Run Browser**：Monitor / Results 內可掃描 runs root，辨識 train、predict、val 或 unknown run，並顯示 weights、results.csv、最後 metrics 與時間。

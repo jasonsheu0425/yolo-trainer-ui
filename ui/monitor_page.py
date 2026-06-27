@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
@@ -7,20 +8,23 @@ from matplotlib.figure import Figure
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QGridLayout, QGroupBox, QHBoxLayout, QLabel, QMessageBox, QPushButton, QTabWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
 
+from core.config_manager import ConfigManager
 from core.gpu_checker import get_gpu_info
-from core.results_reader import available_series, read_results
+from core.results_reader import available_series, read_results, scan_runs
 from ui.widgets import PageHeader, PathPicker
 
 
 class MonitorPage(QWidget):
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, config: ConfigManager | None = None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.config = config
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 20, 24, 20)
         layout.addWidget(PageHeader("Monitor / Results", "每 2 秒更新 GPU 狀態，並將 YOLO results.csv 繪製成訓練曲線。"))
         self.tabs = QTabWidget()
         self.tabs.addTab(self._build_gpu_tab(), "GPU Monitor")
         self.tabs.addTab(self._build_results_tab(), "Results")
+        self.tabs.addTab(self._build_run_browser_tab(), "Run Browser")
         layout.addWidget(self.tabs, 1)
         self.timer = QTimer(self)
         self.timer.setInterval(2000)
@@ -72,6 +76,79 @@ class MonitorPage(QWidget):
         layout.addWidget(self.canvas, 1)
         return tab
 
+    def _build_run_browser_tab(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        self.runs_picker = PathPicker("Runs root folder", directory=True)
+        default_root = str(self.config.get("runs_folder", "runs/detect")) if self.config else "runs/detect"
+        self.runs_picker.set_path(default_root)
+        layout.addWidget(self.runs_picker)
+        row = QHBoxLayout()
+        scan_button = QPushButton("Scan Runs")
+        scan_button.setObjectName("primaryButton")
+        scan_button.clicked.connect(self.scan_run_browser)
+        self.runs_status = QLabel("Not scanned")
+        row.addWidget(scan_button)
+        row.addWidget(self.runs_status)
+        row.addStretch()
+        layout.addLayout(row)
+        headers = [
+            "Run Name", "Type", "Path", "best.pt", "last.pt", "results.csv",
+            "mAP50", "mAP50-95", "Precision", "Recall", "Created / Modified", "Open Folder",
+        ]
+        self.runs_table = QTableWidget(0, len(headers))
+        self.runs_table.setHorizontalHeaderLabels(headers)
+        self.runs_table.setSortingEnabled(True)
+        self.runs_table.horizontalHeader().setStretchLastSection(True)
+        layout.addWidget(self.runs_table, 1)
+        return tab
+
+    def apply_settings(self, values: dict) -> None:
+        if self.config:
+            self.config.settings.update(values)
+        if "runs_folder" in values:
+            self.runs_picker.set_path(str(values["runs_folder"]))
+
+    def scan_run_browser(self) -> None:
+        root = self.runs_picker.path()
+        runs = scan_runs(root)
+        self.runs_table.setSortingEnabled(False)
+        self.runs_table.setRowCount(len(runs))
+        for row, run in enumerate(runs):
+            values = [
+                run["name"],
+                run["type"],
+                str(run["path"]),
+                "Yes" if run["best"] else "No",
+                "Yes" if run["last"] else "No",
+                "Yes" if run["results"] else "No",
+                self._format_metric(run.get("map50")),
+                self._format_metric(run.get("map50_95")),
+                self._format_metric(run.get("precision")),
+                self._format_metric(run.get("recall")),
+                f"{run['created']:%Y-%m-%d %H:%M} / {run['modified']:%Y-%m-%d %H:%M}",
+            ]
+            for column, value in enumerate(values):
+                self.runs_table.setItem(row, column, QTableWidgetItem(str(value)))
+            open_button = QPushButton("Open Folder")
+            open_button.clicked.connect(lambda _checked=False, path=run["path"]: self._open_run_folder(path))
+            self.runs_table.setCellWidget(row, len(values), open_button)
+        self.runs_table.setSortingEnabled(True)
+        root_path = Path(root).expanduser() if root else None
+        if root_path is None or not root_path.is_dir():
+            self.runs_status.setText("Runs root folder not found.")
+        else:
+            self.runs_status.setText(f"Found {len(runs)} run folder(s).")
+
+    @staticmethod
+    def _format_metric(value) -> str:
+        return f"{value:.4f}" if isinstance(value, (int, float)) else "Not found"
+
+    @staticmethod
+    def _open_run_folder(path: Path) -> None:
+        if path.is_dir():
+            os.startfile(path)  # type: ignore[attr-defined]
+
     def refresh_gpu(self) -> None:
         info = get_gpu_info()
         self.torch_value.setText(str(info["torch_version"]))
@@ -118,4 +195,3 @@ class MonitorPage(QWidget):
         self.canvas.draw_idle()
         self.results_status.setText(f"{Path(path).name}：{len(frame)} epochs")
         self.tabs.setCurrentIndex(1)
-

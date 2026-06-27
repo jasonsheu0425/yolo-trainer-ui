@@ -10,6 +10,7 @@ from ui.monitor_page import MonitorPage
 from ui.predict_page import PredictPage
 from ui.settings_page import SettingsPage
 from ui.train_page import TrainPage
+from ui.validate_page import ValidatePage
 
 
 class MainWindow(QMainWindow):
@@ -36,7 +37,7 @@ class MainWindow(QMainWindow):
         side_layout.addWidget(brand)
         self.navigation = QListWidget()
         self.navigation.setObjectName("navigation")
-        labels = ["Train", "Dataset Check", "Predict / Test", "Export", "Monitor / Results", "Settings"]
+        labels = ["Train", "Dataset Check", "Validate / Evaluate", "Predict / Test", "Export", "Monitor / Results", "Settings"]
         for label in labels:
             item = QListWidgetItem(label)
             item.setSizeHint(QSize(0, 46))
@@ -50,11 +51,12 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
         self.train_page = TrainPage(self.config)
         self.dataset_page = DatasetPage()
+        self.validate_page = ValidatePage(self.config)
         self.predict_page = PredictPage(self.config)
         self.export_page = ExportPage(self.config)
-        self.monitor_page = MonitorPage()
+        self.monitor_page = MonitorPage(self.config)
         self.settings_page = SettingsPage(self.config)
-        for page in (self.train_page, self.dataset_page, self.predict_page, self.export_page, self.monitor_page, self.settings_page):
+        for page in (self.train_page, self.dataset_page, self.validate_page, self.predict_page, self.export_page, self.monitor_page, self.settings_page):
             self.stack.addWidget(page)
         outer.addWidget(self.stack, 1)
         self.navigation.currentRowChanged.connect(self.stack.setCurrentIndex)
@@ -62,6 +64,8 @@ class MainWindow(QMainWindow):
         self.settings_page.settings_saved.connect(self.train_page.apply_settings)
         self.settings_page.settings_saved.connect(self.export_page.apply_settings)
         self.settings_page.settings_saved.connect(self.predict_page.apply_settings)
+        self.settings_page.settings_saved.connect(self.validate_page.apply_settings)
+        self.settings_page.settings_saved.connect(self.monitor_page.apply_settings)
         self.train_page.dataset_selected.connect(self.dataset_page.set_yaml_path)
         self.train_page.results_found.connect(self.monitor_page.load_results)
 
@@ -72,4 +76,6 @@ class MainWindow(QMainWindow):
             self.export_page.runner.stop()
         if self.predict_page.runner.running:
             self.predict_page.runner.stop()
+        if self.validate_page.runner.running:
+            self.validate_page.runner.stop()
         event.accept()
