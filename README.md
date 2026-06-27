@@ -126,3 +126,20 @@ The export creates category folders plus `hard_cases_report.csv` and `hard_cases
 - `notes`: classification details or limitations.
 
 Run Browser shows whether a run-local hard-cases summary exists and displays its primary counts. v0.4 classifies cases mainly from prediction labels and confidence values; it does not yet calculate full ground-truth IoU false-positive or false-negative metrics.
+
+## Version 5: Ground Truth IoU Error Mining
+
+Ground Truth Comparison matches YOLO prediction boxes against labeled boxes to surface spatial and class errors. Prepare predictions by enabling `save_txt=True` in Predict / Test; also enable `save_conf=True` to preserve confidence and support low-confidence classification. In Error Mining, select the matching ground-truth labels folder, optionally select `data.yaml` for class names, choose an IoU threshold, and enable Ground Truth Comparison.
+
+The IoU threshold is the minimum overlap required for a prediction to be treated as a normal match. v0.5 reports these flags:
+
+- `false_negative`: a ground-truth box was not matched.
+- `false_positive`: a prediction had no reasonable ground-truth overlap.
+- `class_mismatch`: overlap passed the threshold but class IDs differed.
+- `low_iou`: class IDs matched but overlap was below the threshold.
+- `low_confidence`: prediction confidence was below the configured threshold.
+- `no_detection`: the prediction label existed but contained no valid boxes.
+- `no_label_file`: no prediction label matched the image filename.
+- `unknown`: comparison data was unavailable or no defined error applied.
+
+One image may contain several flags. The report keeps all flags but copies the image only to its highest-severity category. Matching is greedy rather than the full COCO evaluation algorithm. Results can be inaccurate when source images, prediction labels, and ground-truth labels do not share filenames; precise comparison is unavailable if Predict did not save TXT labels.

@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
@@ -20,7 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.config_manager import ConfigManager
-from core.error_miner import CATEGORIES, export_hard_cases, scan_error_cases
+from core.error_miner import export_hard_cases, scan_error_cases
 from ui.widgets import PageHeader, PathPicker
 
 
@@ -31,15 +32,23 @@ class ErrorMiningPage(QWidget):
         self.scan_result: dict | None = None
         self.export_folder: Path | None = None
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 20, 24, 20)
+        page_layout = QVBoxLayout(self)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        page_layout.addWidget(scroll)
+        body = QWidget()
+        scroll.setWidget(body)
+        layout = QVBoxLayout(body)
+        layout.setContentsMargins(24, 20, 24, 24)
         layout.addWidget(PageHeader("Error Mining", "Collect low-confidence and incomplete prediction cases for dataset improvement."))
 
         paths = QGroupBox("Folders")
         paths_layout = QGridLayout(paths)
         self.run_folder = PathPicker("Predict or validation output folder", directory=True)
         self.source_folder = PathPicker("Original source folder (optional)", directory=True)
-        self.labels_folder = PathPicker("YOLO labels folder (optional)", directory=True)
+        self.labels_folder = PathPicker("Additional labels folder for copying (optional)", directory=True)
         self.output_folder = PathPicker("Hard cases output folder", directory=True)
         runs_folder = Path(str(config.get("runs_folder", "runs/detect"))).expanduser()
         default_output = runs_folder.parent / "hard_cases"
@@ -49,6 +58,26 @@ class ErrorMiningPage(QWidget):
         paths_layout.addWidget(self.labels_folder, 1, 0)
         paths_layout.addWidget(self.output_folder, 1, 1)
         layout.addWidget(paths)
+
+        ground_truth = QGroupBox("Ground Truth Comparison")
+        ground_truth_layout = QGridLayout(ground_truth)
+        self.ground_truth_labels = PathPicker("Ground Truth Labels Folder", directory=True)
+        self.class_names_yaml = PathPicker("Class Names Source (optional data.yaml)", "YAML (*.yaml *.yml)")
+        self.enable_ground_truth = QCheckBox("Enable Ground Truth Comparison")
+        self.iou_threshold = QDoubleSpinBox()
+        self.iou_threshold.setRange(0.0, 1.0)
+        self.iou_threshold.setDecimals(2)
+        self.iou_threshold.setSingleStep(0.05)
+        self.iou_threshold.setValue(0.50)
+        ground_truth_layout.addWidget(self.ground_truth_labels, 0, 0)
+        ground_truth_layout.addWidget(self.class_names_yaml, 0, 1)
+        ground_truth_layout.addWidget(self.enable_ground_truth, 1, 0)
+        iou_row = QHBoxLayout()
+        iou_row.addWidget(QLabel("IoU Threshold"))
+        iou_row.addWidget(self.iou_threshold)
+        iou_row.addStretch()
+        ground_truth_layout.addLayout(iou_row, 1, 1)
+        layout.addWidget(ground_truth)
 
         options = QGroupBox("Mining Options")
         options_layout = QHBoxLayout(options)
@@ -90,8 +119,13 @@ class ErrorMiningPage(QWidget):
         layout.addLayout(buttons)
 
         self.summary = QLabel("Not scanned")
+        self.summary.setWordWrap(True)
         layout.addWidget(self.summary)
-        headers = ["Image", "Category", "Min Confidence", "Detections", "Image Path", "Label Path", "Notes"]
+        headers = [
+            "Image", "Primary Category", "All Error Flags", "Predictions", "Ground Truth",
+            "Min Confidence", "Max IoU", "Matched", "False Negative", "False Positive",
+            "Class Mismatch", "Low IoU", "Image Path", "Prediction Label", "Ground Truth Label", "Notes",
+        ]
         self.table = QTableWidget(0, len(headers))
         self.table.setHorizontalHeaderLabels(headers)
         self.table.setSortingEnabled(True)
@@ -114,13 +148,27 @@ class ErrorMiningPage(QWidget):
             return
         source = self.source_folder.path() or None
         labels = self.labels_folder.path() or None
+        ground_truth = self.ground_truth_labels.path() or None
+        if self.enable_ground_truth.isChecked() and not (ground_truth and Path(ground_truth).is_dir()):
+            self.scan_result = None
+            self.export_button.setEnabled(False)
+            message = "Ground-truth comparison is enabled, but a valid labels folder was not provided."
+            self._append_log(f"ERROR: {message}\n")
+            QMessageBox.warning(self, "Error Mining", message)
+            return
         self._append_log(f"Scanning: {run}\n")
+        if not self.enable_ground_truth.isChecked():
+            self._append_log("Ground-truth comparison disabled. Using confidence-based mining only.\n")
         try:
             self.scan_result = scan_error_cases(
                 run,
                 source_folder=source,
                 labels_folder=labels,
                 low_conf_threshold=self.low_confidence.value(),
+                ground_truth_labels_folder=ground_truth,
+                data_yaml=self.class_names_yaml.path() or None,
+                iou_threshold=self.iou_threshold.value(),
+                enable_ground_truth_comparison=self.enable_ground_truth.isChecked(),
             )
         except Exception as exc:
             self.scan_result = None
@@ -159,7 +207,10 @@ class ErrorMiningPage(QWidget):
         report = result.get("report_csv") or "Not found"
         summary = result.get("summary_json") or "Not found"
         self._append_log(f"Report CSV: {report}\nSummary JSON: {summary}\n")
-        self.summary.setText(f"Exported {len(result.get('records', []))} record(s) to {self.export_folder or 'Not found'}")
+        self.summary.setText(
+            self._summary_text(result.get("records", []))
+            + f"\nOutput folder: {self.export_folder or 'Not found'}"
+        )
 
     def _show_scan_result(self) -> None:
         if self.scan_result is None:
@@ -169,27 +220,58 @@ class ErrorMiningPage(QWidget):
         self.table.setRowCount(len(records))
         for row, record in enumerate(records):
             confidence = record.get("min_confidence")
+            max_iou = record.get("max_iou")
             values = [
                 record.get("image_name", ""),
-                record.get("category", "unknown"),
-                f"{confidence:.4f}" if isinstance(confidence, (int, float)) else "Not found",
+                record.get("primary_category", record.get("category", "unknown")),
+                record.get("all_error_flags", "unknown"),
                 record.get("detection_count", 0),
+                record.get("ground_truth_count", 0),
+                f"{confidence:.4f}" if isinstance(confidence, (int, float)) else "Not found",
+                f"{max_iou:.4f}" if isinstance(max_iou, (int, float)) else "Not found",
+                record.get("matched_count", 0),
+                record.get("false_negative_count", 0),
+                record.get("false_positive_count", 0),
+                record.get("class_mismatch_count", 0),
+                record.get("low_iou_count", 0),
                 record.get("image_path", ""),
-                record.get("label_path", "") or "Not found",
+                record.get("prediction_label_path", "") or "Not found",
+                record.get("ground_truth_label_path", "") or "Not found",
                 record.get("notes", ""),
             ]
             for column, value in enumerate(values):
                 self.table.setItem(row, column, QTableWidgetItem(str(value)))
         self.table.setSortingEnabled(True)
-        counts = {category: sum(1 for record in records if record.get("category") == category) for category in CATEGORIES}
-        self.summary.setText(
-            f"Images: {len(records)} | low confidence: {counts['low_confidence']} | "
-            f"no detection: {counts['no_detection']} | no label: {counts['no_label_file']} | unknown: {counts['unknown']}"
-        )
+        self.summary.setText(self._summary_text(records))
         for warning in self.scan_result.get("warnings", []):
             self._append_log(f"WARNING: {warning}\n")
         for error in self.scan_result.get("errors", []):
             self._append_log(f"ERROR: {error}\n")
+
+    def _summary_text(self, records: list[dict]) -> str:
+        totals = {
+            "predictions": sum(int(record.get("detection_count", 0)) for record in records),
+            "ground_truth": sum(int(record.get("ground_truth_count", 0)) for record in records),
+            "true_positive": sum(int(record.get("true_positive_count", 0)) for record in records),
+            "false_negative": sum(int(record.get("false_negative_count", 0)) for record in records),
+            "false_positive": sum(int(record.get("false_positive_count", 0)) for record in records),
+            "class_mismatch": sum(int(record.get("class_mismatch_count", 0)) for record in records),
+            "low_iou": sum(int(record.get("low_iou_count", 0)) for record in records),
+            "low_confidence": sum(int(record.get("low_confidence_count", 0)) for record in records),
+        }
+        flags = [flag for record in records for flag in str(record.get("all_error_flags", "")).split(";")]
+        mode = (
+            "Ground-truth IoU comparison enabled."
+            if self.enable_ground_truth.isChecked()
+            else "Ground-truth comparison disabled. Using confidence-based mining only."
+        )
+        return (
+            f"{mode}\nImages: {len(records)} | predictions: {totals['predictions']} | ground truth: {totals['ground_truth']} | "
+            f"TP: {totals['true_positive']} | FN: {totals['false_negative']} | FP: {totals['false_positive']} | "
+            f"class mismatch: {totals['class_mismatch']} | low IoU: {totals['low_iou']} | "
+            f"low confidence: {totals['low_confidence']} | no detection: {flags.count('no_detection')} | "
+            f"no label: {flags.count('no_label_file')} | unknown: {flags.count('unknown')}"
+        )
 
     def open_hard_cases_folder(self) -> None:
         if self.export_folder and self.export_folder.is_dir():

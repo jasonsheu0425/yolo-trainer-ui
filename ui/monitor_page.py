@@ -119,9 +119,11 @@ class MonitorPage(QWidget):
             mining_summary = run.get("hard_cases_summary", {})
             if run.get("hard_cases"):
                 mining_hint = (
-                    f"low={mining_summary.get('low_confidence_count', 0)}, "
-                    f"no_detection={mining_summary.get('no_detection_count', 0)}, "
-                    f"no_label={mining_summary.get('no_label_file_count', 0)}"
+                    f"FN={mining_summary.get('false_negative_count', 0)}, "
+                    f"FP={mining_summary.get('false_positive_count', 0)}, "
+                    f"class={mining_summary.get('class_mismatch_count', 0)}, "
+                    f"low_iou={mining_summary.get('low_iou_count', 0)}, "
+                    f"low_conf={mining_summary.get('low_confidence_count', 0)}"
                 )
             elif run["type"] == "predict":
                 mining_hint = "Available for Error Mining"
