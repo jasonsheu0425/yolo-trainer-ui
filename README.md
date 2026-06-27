@@ -155,3 +155,29 @@ Selecting a row shows an aspect-ratio-preserving image preview and its source, c
 Report Viewer supports three category matching modes. **Primary Category Only** matches only the single highest-severity `primary_category`. **Any Error Flag** matches every token in `all_error_flags`, including secondary issues. **Primary or Any Flag** is the default and combines both. Flags are parsed case-insensitively with comma, semicolon, or whitespace separators.
 
 Primary category and error flags answer different questions: the primary category determines where an image is copied, while all error flags preserve every issue found on that image. Low confidence or low IoU may therefore be secondary to a false positive or false negative; select **Any Error Flag** to find those cases. The viewer shows separate Primary Category Counts and Error Flag Counts so secondary issues are not hidden.
+
+## Version 6: Dataset Builder
+
+Dataset Builder creates a new YOLO dataset version from a base `data.yaml` and selected rows in `hard_cases_report.csv`; it never edits the base dataset. Select categories and the same report filter mode used by Report Viewer, choose train/val/test ratios that sum to 1.0, and run **Preview Build** before creating the dataset.
+
+Hard-case image selection prefers `copied_to` and falls back to `image_path`. Labels use this priority:
+
+- `ground_truth_label`: reviewed ground truth, preferred for training.
+- `prediction_label`: model output used only when ground truth is unavailable; it may contain incorrect boxes, especially for false positives.
+- `empty_label`: an intentionally empty label representing a negative image.
+- `copied_base_label`: a label copied from the base dataset.
+- `missing`: no label was copied.
+
+Hard cases are shuffled with deterministic seed 42 and assigned according to the configured split ratios. The output always includes train, val, and test directories plus `data.yaml`, `dataset_build_report.csv`, and `dataset_build_summary.json`; the test folder may remain empty when its ratio is zero. Filename collisions receive a deterministic hard-case/base prefix and short hash.
+
+Recommended workflow:
+
+```text
+Predict with save_txt/save_conf
+→ Error Mining with ground-truth comparison
+→ Review in Report Viewer
+→ Dataset Builder creates a new dataset version
+→ Use the new data.yaml in Train
+```
+
+Dataset Builder does not replace human review. Prediction labels may contain incorrect boxes, an empty label intentionally treats an image as a negative sample, and collision renaming changes filenames in the new version while keeping image/label stems aligned.

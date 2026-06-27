@@ -11,3 +11,4 @@ configs/app_settings.json
 *.mlpackage/
 *_openvino_model/
 *_saved_model/
+datasets/built/

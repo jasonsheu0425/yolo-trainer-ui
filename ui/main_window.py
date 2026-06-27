@@ -5,6 +5,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
 
 from core.config_manager import ConfigManager
 from ui.dataset_page import DatasetPage
+from ui.dataset_builder_page import DatasetBuilderPage
 from ui.error_mining_page import ErrorMiningPage
 from ui.export_page import ExportPage
 from ui.monitor_page import MonitorPage
@@ -38,7 +39,7 @@ class MainWindow(QMainWindow):
         side_layout.addWidget(brand)
         self.navigation = QListWidget()
         self.navigation.setObjectName("navigation")
-        labels = ["Train", "Dataset Check", "Validate / Evaluate", "Predict / Test", "Error Mining", "Export", "Monitor / Results", "Settings"]
+        labels = ["Train", "Dataset Check", "Dataset Builder", "Validate / Evaluate", "Predict / Test", "Error Mining", "Export", "Monitor / Results", "Settings"]
         for label in labels:
             item = QListWidgetItem(label)
             item.setSizeHint(QSize(0, 46))
@@ -52,13 +53,14 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
         self.train_page = TrainPage(self.config)
         self.dataset_page = DatasetPage()
+        self.dataset_builder_page = DatasetBuilderPage(self.config)
         self.validate_page = ValidatePage(self.config)
         self.predict_page = PredictPage(self.config)
         self.error_mining_page = ErrorMiningPage(self.config)
         self.export_page = ExportPage(self.config)
         self.monitor_page = MonitorPage(self.config)
         self.settings_page = SettingsPage(self.config)
-        for page in (self.train_page, self.dataset_page, self.validate_page, self.predict_page, self.error_mining_page, self.export_page, self.monitor_page, self.settings_page):
+        for page in (self.train_page, self.dataset_page, self.dataset_builder_page, self.validate_page, self.predict_page, self.error_mining_page, self.export_page, self.monitor_page, self.settings_page):
             self.stack.addWidget(page)
         outer.addWidget(self.stack, 1)
         self.navigation.currentRowChanged.connect(self.stack.setCurrentIndex)
@@ -69,8 +71,15 @@ class MainWindow(QMainWindow):
         self.settings_page.settings_saved.connect(self.validate_page.apply_settings)
         self.settings_page.settings_saved.connect(self.monitor_page.apply_settings)
         self.settings_page.settings_saved.connect(self.error_mining_page.apply_settings)
+        self.settings_page.settings_saved.connect(self.dataset_builder_page.apply_settings)
         self.train_page.dataset_selected.connect(self.dataset_page.set_yaml_path)
         self.train_page.results_found.connect(self.monitor_page.load_results)
+        self.error_mining_page.hard_cases_exported.connect(self.dataset_builder_page.set_hard_cases)
+        self.dataset_builder_page.use_dataset_requested.connect(self._use_built_dataset)
+
+    def _use_built_dataset(self, data_yaml: str) -> None:
+        self.train_page.dataset.set_path(data_yaml)
+        self.navigation.setCurrentRow(0)
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
         if self.train_page.runner.running:

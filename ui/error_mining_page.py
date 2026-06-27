@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -76,6 +76,8 @@ class ImagePreviewLabel(QLabel):
 
 
 class ErrorMiningPage(QWidget):
+    hard_cases_exported = Signal(str, str)
+
     def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.config = config
@@ -356,6 +358,7 @@ class ErrorMiningPage(QWidget):
         if result.get("report_csv"):
             self.report_picker.set_path(str(result["report_csv"]))
             self.load_report()
+            self.hard_cases_exported.emit(str(result["report_csv"]), str(self.export_folder or ""))
 
     def _show_scan_result(self) -> None:
         if self.scan_result is None:
