@@ -65,11 +65,18 @@ class PredictPage(QWidget):
         self.device = QLineEdit(str(config.get("default_device", "0")))
         self.save = QCheckBox("Save prediction outputs")
         self.save.setChecked(True)
+        self.save_txt = QCheckBox("Save TXT labels")
+        self.save_conf = QCheckBox("Save confidence values")
+        label_options = QHBoxLayout()
+        label_options.addWidget(self.save_txt)
+        label_options.addWidget(self.save_conf)
+        label_options.addStretch()
         form.addRow("Image size", self.imgsz)
         form.addRow("Confidence", self.conf)
         form.addRow("IoU", self.iou)
         form.addRow("Device", self.device)
         form.addRow("Save", self.save)
+        form.addRow("Prediction labels", label_options)
         layout.addWidget(options)
 
         preview_box = QGroupBox("Command Preview")
@@ -115,6 +122,8 @@ class PredictPage(QWidget):
             widget.valueChanged.connect(self.update_preview)
         self.device.textChanged.connect(self.update_preview)
         self.save.toggled.connect(self.update_preview)
+        self.save_txt.toggled.connect(self.update_preview)
+        self.save_conf.toggled.connect(self.update_preview)
         self._source_type_changed(self.source_type.currentText())
         self.update_preview()
 
@@ -156,6 +165,8 @@ class PredictPage(QWidget):
             f"iou={self.iou.value():.2f}",
             f"device={self.device.text().strip()}",
             f"save={self.save.isChecked()}",
+            f"save_txt={self.save_txt.isChecked()}",
+            f"save_conf={self.save_conf.isChecked()}",
             f"project={self._project_folder()}",
             "name=predict_ui",
         ]
@@ -221,4 +232,3 @@ class PredictPage(QWidget):
     def _show_error(self, message: str) -> None:
         self._append_log(f"ERROR: {message}\n")
         QMessageBox.critical(self, "Predict process error", message)
-

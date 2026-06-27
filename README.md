@@ -105,3 +105,24 @@ class_id x_center y_center width height
 ### v0.3.1 validation metrics persistence
 
 Completed validations save `validation_metrics.json` in their output folder. Run Browser reads `results.csv` first and falls back to this UTF-8 JSON file, so standalone validation metrics remain available after restarting the application.
+
+## Version 4: Error Mining / Hard Cases
+
+Error Mining organizes uncertain or incomplete prediction outputs into review folders that can be used for relabeling and dataset expansion.
+
+1. In **Predict / Test**, enable both **Save TXT labels** and **Save confidence values**. This adds `save_txt=True` and `save_conf=True` to the exact YOLO CLI command.
+2. Run prediction, then open **Error Mining** and select the resulting predict run folder.
+3. Optionally select the original source folder and a YOLO labels folder. Original source images are preferred when exporting.
+4. Set the hard-cases output folder and confidence threshold, select **Scan**, then **Export Hard Cases**.
+
+The export creates category folders plus `hard_cases_report.csv` and `hard_cases_summary.json`. CSV fields are:
+
+- `image_name`: source image filename.
+- `category`: `low_confidence`, `no_detection`, `no_label_file`, or `unknown`.
+- `image_path` / `label_path`: selected source and label paths.
+- `min_confidence`: minimum confidence found in the prediction label.
+- `detection_count`: number of prediction label rows.
+- `copied_to`: exported image path.
+- `notes`: classification details or limitations.
+
+Run Browser shows whether a run-local hard-cases summary exists and displays its primary counts. v0.4 classifies cases mainly from prediction labels and confidence values; it does not yet calculate full ground-truth IoU false-positive or false-negative metrics.

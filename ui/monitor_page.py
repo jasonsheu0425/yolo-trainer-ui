@@ -94,7 +94,8 @@ class MonitorPage(QWidget):
         layout.addLayout(row)
         headers = [
             "Run Name", "Type", "Path", "best.pt", "last.pt", "results.csv",
-            "mAP50", "mAP50-95", "Precision", "Recall", "Created / Modified", "Open Folder",
+            "Hard Cases", "Error Mining", "mAP50", "mAP50-95", "Precision", "Recall",
+            "Created / Modified", "Open Folder",
         ]
         self.runs_table = QTableWidget(0, len(headers))
         self.runs_table.setHorizontalHeaderLabels(headers)
@@ -115,6 +116,17 @@ class MonitorPage(QWidget):
         self.runs_table.setSortingEnabled(False)
         self.runs_table.setRowCount(len(runs))
         for row, run in enumerate(runs):
+            mining_summary = run.get("hard_cases_summary", {})
+            if run.get("hard_cases"):
+                mining_hint = (
+                    f"low={mining_summary.get('low_confidence_count', 0)}, "
+                    f"no_detection={mining_summary.get('no_detection_count', 0)}, "
+                    f"no_label={mining_summary.get('no_label_file_count', 0)}"
+                )
+            elif run["type"] == "predict":
+                mining_hint = "Available for Error Mining"
+            else:
+                mining_hint = "—"
             values = [
                 run["name"],
                 run["type"],
@@ -122,6 +134,8 @@ class MonitorPage(QWidget):
                 "Yes" if run["best"] else "No",
                 "Yes" if run["last"] else "No",
                 "Yes" if run["results"] else "No",
+                "Yes" if run.get("hard_cases") else "No",
+                mining_hint,
                 self._format_metric(run.get("map50")),
                 self._format_metric(run.get("map50_95")),
                 self._format_metric(run.get("precision")),

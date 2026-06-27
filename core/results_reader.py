@@ -8,6 +8,8 @@ from typing import Any
 
 import pandas as pd
 
+from core.error_miner import read_hard_cases_summary
+
 
 SERIES = {
     "loss": ["train/box_loss", "train/cls_loss", "train/dfl_loss", "val/box_loss", "val/cls_loss", "val/dfl_loss"],
@@ -239,6 +241,7 @@ def scan_runs(runs_root: str | Path) -> list[dict[str, Any]]:
             artifacts = scan_run_folder(folder)
             metrics = read_validation_metrics(folder)
             run_type = _detect_run_type(folder, artifacts)
+            hard_cases = read_hard_cases_summary(folder)
             stat = folder.stat()
             runs.append(
                 {
@@ -248,6 +251,8 @@ def scan_runs(runs_root: str | Path) -> list[dict[str, Any]]:
                     "best": artifacts.get("best.pt") is not None,
                     "last": artifacts.get("last.pt") is not None,
                     "results": artifacts.get("results.csv") is not None,
+                    "hard_cases": hard_cases is not None,
+                    "hard_cases_summary": hard_cases or {},
                     "created": datetime.fromtimestamp(stat.st_ctime),
                     "modified": datetime.fromtimestamp(stat.st_mtime),
                     **{key: metrics.get(key) for key in METRIC_ALIASES},
