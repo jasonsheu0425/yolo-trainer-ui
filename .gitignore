@@ -5,6 +5,8 @@ venv/
 env/
 build/
 dist/
+release_artifacts/
+packaging/*.zip
 *.spec
 runs/
 datasets/

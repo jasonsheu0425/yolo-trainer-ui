@@ -88,7 +88,9 @@ More detail is available in [Usage](docs/usage.md) and [Troubleshooting](docs/tr
 
 ## GitHub releases and portable ZIP
 
-A future release is planned to provide a portable ZIP. v0.7 prepares the documentation and packaging scripts, but it does not claim that a tested portable binary is currently available. See [Packaging](docs/packaging.md).
+The v0.8 prerelease provides a PyInstaller **onedir** portable ZIP named `YOLO-Trainer-UI-v0.8.0-windows-portable.zip`. Download it from [GitHub Releases](https://github.com/jasonsheu0425/yolo-trainer-ui/releases), extract the entire archive, and run `YOLO-Trainer-UI.exe` beside its `_internal` folder.
+
+The archive is intentionally larger than the source because it contains Python, Qt, and required ML/data-processing dependencies. The first launch can be slower while Windows loads the files or Windows Defender scans the extracted folder. YOLO commands use the executable configured in Settings; GPU workflows still require that external YOLO environment to have a compatible NVIDIA driver and PyTorch/CUDA support. See [Packaging](docs/packaging.md).
 
 ## Known limitations
 
@@ -96,11 +98,11 @@ A future release is planned to provide a portable ZIP. v0.7 prepares the documen
 - Prediction labels may contain incorrect boxes.
 - Error Mining uses greedy matching rather than a complete COCO evaluation implementation.
 - Large dataset builds can be cancelled, but files copied before cancellation may remain.
-- The packaged Windows distribution is not complete yet.
+- The portable build is a prerelease and should be tested on additional clean Windows systems.
 
 ## Development status
 
-Current version: **v0.7 GitHub Release Preparation** (`0.7.0`).
+Current version: **v0.8 Portable Windows Build** (`0.8.0`).
 
 Development dependencies are listed in `requirements-dev.txt`. Before publishing a release, follow the [Release Checklist](docs/release_checklist.md).
 

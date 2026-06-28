@@ -31,3 +31,15 @@ Enable **Save TXT labels** and **Save confidence values** before prediction. Err
 ## Dataset Builder output already exists
 
 Choose an empty output folder, or explicitly enable overwrite after confirming the target is disposable. With overwrite disabled, the builder safely refuses to replace existing content.
+
+## Portable executable starts slowly
+
+The onedir package contains Python, Qt, and ML dependencies. First launch may take longer while Windows loads many files or Windows Defender scans the extracted folder. Extract the entire ZIP first and keep `_internal/` beside `YOLO-Trainer-UI.exe`.
+
+## Portable executable does not open
+
+Confirm the ZIP was fully extracted, `_internal/` is present, and Windows is not still scanning the folder. Run the source version to distinguish packaging problems from local GPU or dependency problems, then report reproducible details through GitHub Issues.
+
+## GPU is unavailable in the portable build
+
+Packaging does not make incompatible GPU environments compatible. Verify the NVIDIA driver and the runtime requirements for the included PyTorch build. UI-only features remain usable without CUDA, while training may fall back to the CPU.

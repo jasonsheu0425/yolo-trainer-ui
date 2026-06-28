@@ -19,7 +19,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
 
 class ConfigManager:
     def __init__(self, path: Path | None = None) -> None:
-        self.path = path or Path(__file__).resolve().parents[1] / "configs" / "app_settings.json"
+        self.path = path or _default_settings_path()
         self.settings = self.load()
 
     def load(self) -> dict[str, Any]:
@@ -44,3 +44,9 @@ class ConfigManager:
 
     def get(self, key: str, default: Any = None) -> Any:
         return self.settings.get(key, default)
+
+
+def _default_settings_path() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent / "configs" / "app_settings.json"
+    return Path(__file__).resolve().parents[1] / "configs" / "app_settings.json"
