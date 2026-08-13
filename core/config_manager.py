@@ -5,6 +5,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from persistence.atomic_writer import atomic_write_json
+
 
 DEFAULT_SETTINGS: dict[str, Any] = {
     "language": "zh_TW",
@@ -39,8 +41,7 @@ class ConfigManager:
         merged = DEFAULT_SETTINGS.copy()
         merged.update(self.settings)
         merged.update(values)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic_write_json(self.path, merged)
         self.settings = merged
 
     def get(self, key: str, default: Any = None) -> Any:

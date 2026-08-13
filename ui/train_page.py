@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import shlex
 from pathlib import Path
 
 from PySide6.QtCore import Signal
@@ -22,9 +21,11 @@ from PySide6.QtWidgets import (
 )
 
 from core.config_manager import ConfigManager
+from core.i18n_manager import tr
 from core.results_reader import RUN_ARTIFACTS, scan_run_folder
-from core.runtime_manager import RuntimeManager
-from core.trainer_process import TrainerProcess
+from domain.training import TrainingConfig
+from services.errors import InvalidTrainingConfigError, RuntimeUnavailableError
+from services.training_service import TrainingService
 from ui.widgets import PageHeader, PathPicker, WheelSafeComboBox, WheelSafeSpinBox, bind_combo_items, bind_text, set_tooltip, show_runtime_required
 
 
@@ -41,15 +42,17 @@ class TrainPage(QWidget):
         "Higher Accuracy YOLOv8s": {"model": "yolov8s.pt", "epochs": 150, "imgsz": 960, "batch": 8, "patience": 50},
     }
 
-    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
+    def __init__(self, config: ConfigManager, training_service: TrainingService | None = None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.config = config
-        self.runtime_manager = RuntimeManager(config)
-        self.runner = TrainerProcess(self)
-        self.runner.output.connect(self._append_log)
-        self.runner.state_changed.connect(self._set_running)
-        self.runner.finished.connect(self._finished)
-        self.runner.error.connect(self._show_error)
+        self.training_service = training_service or TrainingService(config, parent=self)
+        # Compatibility shim while sibling pages migrate to the service boundary.
+        self.runtime_manager = self.training_service.runtime
+        self.runner = self.training_service.runner
+        self.training_service.log.connect(self._append_log)
+        self.training_service.state_changed.connect(self._set_running)
+        self.training_service.completed.connect(self._finished)
+        self.training_service.failed.connect(self._show_error)
 
         page_layout = QVBoxLayout(self)
         page_layout.setContentsMargins(0, 0, 0, 0)
@@ -209,25 +212,43 @@ class TrainPage(QWidget):
         self.update_preview()
 
     def training_values(self) -> dict[str, object]:
-        """Expose the one authoritative training configuration to Simple Mode."""
-        return {
-            "model": self.model.currentText().strip(), "epochs": self.epochs.value(),
-            "imgsz": self.imgsz.value(), "batch": self.batch.value(),
-            "device": self.device.text().strip(), "patience": self.patience.value(),
-        }
+        """Compatibility view of the shared typed training configuration."""
+        config = self.training_config()
+        return {"model": config.model, "epochs": config.epochs, "imgsz": config.imgsz,
+                "batch": config.batch, "device": config.device, "patience": config.patience}
+
+    def training_config(self) -> TrainingConfig:
+        """Convert Advanced widgets to the shared domain model."""
+        return TrainingConfig(
+            task=self.task.currentText(), model=self.model.currentText().strip(), data=self.dataset.path(),
+            imgsz=self.imgsz.value(), epochs=self.epochs.value(), batch=self.batch.value(),
+            device=self.device.text().strip(), workers=self.workers.value(), project=self.project.text().strip(),
+            name=self.name.text().strip(), resume=self.resume.isChecked(), pretrained=self.pretrained.isChecked(),
+            cache=self.cache.isChecked(), patience=self.patience.value(), advanced=self.advanced.text(),
+        )
+
+    def apply_training_config(self, config: TrainingConfig) -> None:
+        """Render a shared config in Advanced widgets without another command path."""
+        self.dataset.set_path(config.data)
+        self.model.setCurrentText(config.model)
+        self.task.setCurrentText(config.task)
+        self.imgsz.setValue(config.imgsz)
+        self.epochs.setValue(config.epochs)
+        self.batch.setValue(config.batch)
+        self.device.setText(config.device)
+        self.workers.setValue(config.workers)
+        self.project.setText(config.project)
+        self.name.setText(config.name)
+        self.resume.setChecked(config.resume)
+        self.pretrained.setChecked(config.pretrained)
+        self.cache.setChecked(config.cache)
+        self.patience.setValue(config.patience)
+        self.advanced.setText(config.advanced)
+        self.update_preview()
 
     def apply_simple_values(self, values: dict[str, object], dataset_path: str) -> None:
-        """Apply Simple Mode values without creating another command builder."""
-        if dataset_path:
-            self.dataset.set_path(dataset_path)
-        if "model" in values:
-            self.model.setCurrentText(str(values["model"]))
-        for name, widget in (("epochs", self.epochs), ("imgsz", self.imgsz), ("batch", self.batch), ("patience", self.patience)):
-            if name in values:
-                widget.setValue(int(values[name]))
-        if "device" in values:
-            self.device.setText(str(values["device"]))
-        self.update_preview()
+        """Compatibility wrapper for legacy Simple Mode callers."""
+        self.apply_training_config(self.training_config().with_updates(data=dataset_path or self.dataset.path(), **values))
 
     def apply_preset(self, _name: str) -> None:
         values = self.PRESETS.get(str(self.preset.currentData() or ""))
@@ -259,45 +280,25 @@ class TrainPage(QWidget):
             self.model.setCurrentText(path)
 
     def build_args(self) -> list[str]:
-        args = [
-            self.task.currentText(), "train",
-            f"model={self.model.currentText().strip()}", f"data={self.dataset.path()}",
-            f"imgsz={self.imgsz.value()}", f"epochs={self.epochs.value()}",
-            f"batch={self.batch.value()}", f"device={self.device.text().strip()}",
-            f"workers={self.workers.value()}", f"project={self.project.text().strip()}",
-            f"name={self.name.text().strip()}", f"resume={self.resume.isChecked()}",
-            f"pretrained={self.pretrained.isChecked()}", f"cache={self.cache.isChecked()}",
-            f"patience={self.patience.value()}",
-        ]
-        if self.advanced.text().strip():
-            args.extend(shlex.split(self.advanced.text().strip(), posix=False))
-        return args
+        return self.training_service.build_command(self.training_config())
 
     def update_preview(self, *_args) -> None:
         if not hasattr(self, "preview"):
             return
-        program = self.runtime_manager.yolo_command_for_preview()
-        self.preview.setText(self.runner.preview(program, self.build_args()))
+        self.preview.setText(self.training_service.preview(self.training_config()))
 
     def start_training(self) -> None:
-        dataset = Path(self.dataset.path())
-        if not dataset.is_file():
-            QMessageBox.warning(self, "Train", "請選擇有效的 data.yaml。")
-            return
-        if not self.model.currentText().strip():
-            QMessageBox.warning(self, "Train", "請選擇或輸入 model。")
-            return
         try:
-            args = self.build_args()
+            self.training_service.start(self.training_config(), Path.cwd())
+        except InvalidTrainingConfigError as exc:
+            QMessageBox.warning(self, "Train", tr(f"error.{exc}"))
         except ValueError as exc:
-            QMessageBox.warning(self, "Advanced Parameters", f"參數格式不正確：{exc}")
-            return
-        program = self.runtime_manager.resolve_yolo_command()
-        if not program:
+            QMessageBox.warning(self, "Advanced Parameters", str(exc))
+        except RuntimeUnavailableError:
             if show_runtime_required(self):
                 self.runtime_required.emit()
+        else:
             return
-        self.runner.start(program, args, Path.cwd())
 
     def _set_running(self, running: bool) -> None:
         self.start_button.setEnabled(not running)
@@ -381,14 +382,7 @@ class TrainPage(QWidget):
             os.startfile(target)  # type: ignore[attr-defined]
 
     def _latest_run_dir(self) -> Path | None:
-        project = Path(self.project.text().strip()).expanduser()
-        if not project.is_absolute():
-            project = Path.cwd() / project
-        if not project.is_dir():
-            return None
-        name = self.name.text().strip()
-        candidates = [path for path in project.glob(f"{name}*") if path.is_dir()]
-        return max(candidates, key=lambda path: path.stat().st_mtime) if candidates else None
+        return self.training_service.latest_run(self.training_config(), Path.cwd())
 
     def open_runs_folder(self) -> None:
         path = Path(self.project.text().strip()).expanduser()

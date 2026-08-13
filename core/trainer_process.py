@@ -5,6 +5,8 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, QTimer, Signal
 
+from domain.task_state import TaskState
+
 
 class TrainerProcess(QObject):
     output = Signal(str)
@@ -12,6 +14,7 @@ class TrainerProcess(QObject):
     finished = Signal(int, int)
     error = Signal(str)
     state_changed = Signal(bool)
+    status_changed = Signal(str)
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -21,6 +24,7 @@ class TrainerProcess(QObject):
         self.process.started.connect(self._on_started)
         self.process.finished.connect(self._on_finished)
         self.process.errorOccurred.connect(self._on_error)
+        self._stop_requested = False
 
     @property
     def running(self) -> bool:
@@ -41,11 +45,14 @@ class TrainerProcess(QObject):
         env.insert("PYTHONIOENCODING", "utf-8")
         self.process.setProcessEnvironment(env)
         self.output.emit(f"> {self.preview(program, args)}\n")
+        self._stop_requested = False
         self.process.start(program, args)
 
     def stop(self) -> None:
         if not self.running:
             return
+        self._stop_requested = True
+        self.status_changed.emit(TaskState.CANCELLING.value)
         self.output.emit("\n正在停止程序…\n")
         self.process.terminate()
         QTimer.singleShot(3000, self._force_kill_if_needed)
@@ -61,13 +68,19 @@ class TrainerProcess(QObject):
 
     def _on_started(self) -> None:
         self.state_changed.emit(True)
+        self.status_changed.emit(TaskState.RUNNING.value)
         self.started.emit()
 
     def _on_finished(self, code: int, status: QProcess.ExitStatus) -> None:
         self._read_output()
         self.state_changed.emit(False)
+        if self._stop_requested:
+            self.status_changed.emit(TaskState.CANCELLED.value)
+        elif code == 0:
+            self.status_changed.emit(TaskState.COMPLETED.value)
+        else:
+            self.status_changed.emit(TaskState.FAILED.value)
         self.finished.emit(code, int(status.value))
 
     def _on_error(self, error: QProcess.ProcessError) -> None:
         self.error.emit(f"無法啟動或執行程序：{self.process.errorString()} ({error.name})")
-

@@ -190,7 +190,10 @@ class SimpleModePage(QWidget):
             str(self.model_profile.currentData()), str(self.training_profile.currentData()),
             self.train_page.device.text().strip(),
         )
-        self.train_page.apply_simple_values(profile.values, self.dataset.path())
+        shared_config = self.train_page.training_config().with_updates(
+            data=self.dataset.path(), **profile.values
+        )
+        self.train_page.apply_training_config(shared_config)
         self._refresh_actual_settings()
         self._refresh_statuses()
 

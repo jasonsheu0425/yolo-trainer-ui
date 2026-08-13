@@ -21,7 +21,8 @@ from PySide6.QtWidgets import (
 
 from core.i18n_manager import get_i18n, tr
 from core.results_reader import scan_run_folder
-from core.training_result_analyzer import TrainingAnalysis, analyze_or_load
+from core.training_result_analyzer import TrainingAnalysis
+from services.analysis_service import AnalysisService
 from ui.widgets import PageHeader, PathPicker, bind_text
 
 
@@ -60,8 +61,9 @@ class TrainingAnalysisPage(QWidget):
 
     review_requested = Signal(str)
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, analysis_service: AnalysisService | None = None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.analysis_service = analysis_service or AnalysisService()
         self.run_folder: Path | None = None
         self.analysis: TrainingAnalysis | None = None
         self.artifacts: dict[str, Path | None] = {}
@@ -167,7 +169,7 @@ class TrainingAnalysisPage(QWidget):
             self._set_empty()
             return
         self.picker.set_path(str(self.run_folder))
-        self.analysis = analyze_or_load(self.run_folder, force=force)
+        self.analysis = self.analysis_service.load_run(self.run_folder, force=force)
         self.artifacts = scan_run_folder(self.run_folder)
         normalized = self.run_folder / "confusion_matrix_normalized.png"
         self.artifacts["confusion_matrix_normalized.png"] = normalized if normalized.is_file() else None

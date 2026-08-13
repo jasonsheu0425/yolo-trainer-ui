@@ -3,7 +3,7 @@ setlocal
 cd /d "%~dp0\.."
 set "APP_DIR=dist\YOLO-Trainer-UI"
 set "ARTIFACT_DIR=release_artifacts"
-set "ZIP_PATH=%ARTIFACT_DIR%\YOLO-Trainer-UI-v0.11.0-windows-portable.zip"
+set "ZIP_PATH=%ARTIFACT_DIR%\YOLO-Trainer-UI-v0.11.1-windows-portable.zip"
 if not exist "%APP_DIR%" (
   echo ERROR: dist\YOLO-Trainer-UI does not exist. Run build_pyinstaller_onedir.bat first.
   exit /b 1

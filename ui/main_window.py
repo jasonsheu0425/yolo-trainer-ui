@@ -5,9 +5,10 @@ from pathlib import Path
 from PySide6.QtCore import QSize
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow, QStackedWidget, QVBoxLayout, QWidget
 
+from app.application import ApplicationServices
+from app.navigation import NavigationRequest
 from core.config_manager import ConfigManager
 from core.i18n_manager import get_i18n, tr
-from core.runtime_manager import RuntimeManager
 from core.version import APP_NAME, APP_VERSION
 from ui.dataset_page import DatasetPage
 from ui.dataset_builder_page import DatasetBuilderPage
@@ -30,6 +31,7 @@ class MainWindow(QMainWindow):
         self.resize(1280, 820)
         self.setMinimumSize(1050, 680)
         self.config = ConfigManager()
+        self.services = ApplicationServices.create(self.config)
         self.i18n = get_i18n()
         self.i18n.set_language(str(self.config.get("language", "zh_TW")), emit=False)
 
@@ -80,8 +82,8 @@ class MainWindow(QMainWindow):
         content_layout.addWidget(self.runtime_banner)
 
         self.stack = QStackedWidget()
-        self.train_page = TrainPage(self.config)
-        self.analysis_page = TrainingAnalysisPage()
+        self.train_page = TrainPage(self.config, self.services.training)
+        self.analysis_page = TrainingAnalysisPage(self.services.analysis)
         self.simple_page = SimpleModePage(self.config, self.train_page)
         self.dataset_page = DatasetPage()
         self.dataset_builder_page = DatasetBuilderPage(self.config)
@@ -97,6 +99,7 @@ class MainWindow(QMainWindow):
         content_layout.addWidget(self.stack, 1)
         outer.addWidget(content, 1)
         self.navigation.currentRowChanged.connect(self._navigation_changed)
+        self.services.navigation.requested.connect(self._navigation_requested)
         self.navigation.setCurrentRow(0)
         self.settings_page.settings_saved.connect(self.train_page.apply_settings)
         self.settings_page.settings_saved.connect(self.export_page.apply_settings)
@@ -174,6 +177,10 @@ class MainWindow(QMainWindow):
             self.stack.setCurrentIndex(mapping[keys[row]])
 
     def _open_page(self, key: str) -> None:
+        self.services.navigation.go_to(key.removeprefix("nav."))
+
+    def _navigation_requested(self, request: NavigationRequest) -> None:
+        key = f"nav.{request.target}"
         if key in self.active_navigation_keys:
             self.navigation.setCurrentRow(self.active_navigation_keys.index(key))
 
@@ -201,11 +208,11 @@ class MainWindow(QMainWindow):
             self._refresh_runtime_banner()
 
     def _refresh_runtime_banner(self) -> None:
-        self.runtime_banner.setVisible(RuntimeManager(self.config).resolve_yolo_command() is None)
+        self.runtime_banner.setVisible(self.services.runtime.resolve_yolo_command() is None)
 
     def _use_built_dataset(self, data_yaml: str) -> None:
         self.train_page.dataset.set_path(data_yaml)
-        self.navigation.setCurrentRow(0)
+        self._open_page("nav.train")
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
         self.dataset_builder_page.shutdown()

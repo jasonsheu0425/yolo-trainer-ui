@@ -126,7 +126,13 @@ The portable app contains its UI runtime, while YOLO is resolved separately from
 
 ## Development status
 
-Current version: **v0.11.0 Training Result Analysis** (`0.11.0`).
+Current version: **v0.11.1 Architecture Hardening** (`0.11.1`).
+
+### v0.11.1 Architecture Hardening
+
+This release focuses on internal modularization, service boundaries,
+testability, and preparation for the upcoming Annotation Editor. Existing
+workflows, settings, and run/report formats remain compatible.
 
 Development dependencies are listed in `requirements-dev.txt`. Before publishing a release, follow the [Release Checklist](docs/release_checklist.md).
 

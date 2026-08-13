@@ -8,20 +8,20 @@ causes from aggregate metrics.
 from __future__ import annotations
 
 from datetime import datetime
-import hashlib
 import json
 import math
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from core.results_reader import METRIC_ALIASES, extract_metrics, read_results, scan_run_folder
+from persistence.training_analysis_store import TrainingAnalysisStore
 
 
 ANALYSIS_SCHEMA_VERSION = 1
 HEURISTIC_VERSION = 1
 ANALYSIS_FILENAME = "training_analysis.json"
+ANALYSIS_STORE = TrainingAnalysisStore()
 
 
 @dataclass(frozen=True)
@@ -70,23 +70,12 @@ def persist_analysis(run_folder: str | Path, analysis: TrainingAnalysis) -> tupl
     """Atomically persist derived data only; return an error instead of raising."""
     root = Path(run_folder)
     results = root / "results.csv"
-    target = root / ANALYSIS_FILENAME
-    temporary = root / f".{ANALYSIS_FILENAME}.tmp"
     if not results.is_file():
         return None, "Analysis cache was not saved: results.csv not found."
     try:
         payload = _analysis_payload(results, analysis)
-        with temporary.open("w", encoding="utf-8", newline="\n") as handle:
-            json.dump(payload, handle, ensure_ascii=False, indent=2, allow_nan=False)
-            handle.flush()
-            os.fsync(handle.fileno())
-        temporary.replace(target)
-        return target, ""
+        return ANALYSIS_STORE.write_payload(root, payload), ""
     except (OSError, TypeError, ValueError) as exc:
-        try:
-            temporary.unlink(missing_ok=True)
-        except OSError:
-            pass
         return None, f"Analysis cache was not saved: {exc}"
 
 
@@ -99,18 +88,16 @@ def load_cached_analysis(run_folder: str | Path) -> TrainingAnalysis | None:
     data.
     """
     root = Path(run_folder)
-    cache_path = root / ANALYSIS_FILENAME
-    if not cache_path.is_file():
+    payload = ANALYSIS_STORE.read_payload(root)
+    if payload is None:
         return None
     try:
-        payload = json.loads(cache_path.read_text(encoding="utf-8"))
         analysis = _analysis_from_payload(payload)
-        results = root / "results.csv"
-        if not results.is_file():
+        source_status = ANALYSIS_STORE.cache_matches_source(root, payload)
+        if source_status is None:
             analysis.cache_status = "unverified_cache"
             return analysis
-        source = payload["source"]
-        if source["sha256"] != _sha256(results):
+        if not source_status:
             return None
         analysis.cache_status = "cache_hit"
         return analysis
@@ -179,7 +166,7 @@ def _analysis_payload(results: Path, analysis: TrainingAnalysis) -> dict[str, An
         "heuristic_version": HEURISTIC_VERSION,
         "app_version": "0.11.0",
         "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
-        "source": {"results_csv": str(results.resolve()), "sha256": _sha256(results)},
+        "source": {"results_csv": str(results.resolve()), "sha256": ANALYSIS_STORE.source_hash(results)},
         "metrics": analysis.metrics,
         "rating": {"id": analysis.rating},
         "best_epoch": analysis.best_epoch,
@@ -416,10 +403,6 @@ def _clean_series(series) -> list[float]:
 
 def _dedupe_recommendations(findings: list[AnalysisFinding]) -> list[str]:
     return list(dict.fromkeys(value for finding in findings for value in finding.recommendations))
-
-
-def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _is_sha256(value: object) -> bool:
