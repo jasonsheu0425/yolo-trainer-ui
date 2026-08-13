@@ -4,8 +4,9 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout, QWidget
 
 from core.config_manager import ConfigManager
+from core.i18n_manager import get_i18n, tr
 from core.runtime_manager import RuntimeManager
-from ui.widgets import PageHeader, PathPicker
+from ui.widgets import PageHeader, PathPicker, WheelSafeComboBox, set_tooltip
 
 
 class SettingsPage(QWidget):
@@ -15,37 +16,46 @@ class SettingsPage(QWidget):
         super().__init__(parent)
         self.config = config
         self.runtime_manager = RuntimeManager(config)
+        self.i18n = get_i18n()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 20, 24, 20)
-        layout.addWidget(PageHeader("Settings", "設定 YOLO 執行環境與各頁面的預設值。"))
+        layout.addWidget(PageHeader("settings.title", "settings.description"))
 
-        box = QGroupBox("應用程式設定")
-        form = QFormLayout(box)
+        self.box = QGroupBox()
+        form = QFormLayout(self.box)
+        self.form = form
         self.python = PathPicker("", "Python (python.exe);;所有檔案 (*.*)")
         self.yolo = PathPicker("", "執行檔 (yolo.exe);;所有檔案 (*.*)")
         self.runs = PathPicker("", directory=True)
         self.model = QLineEdit()
         self.device = QLineEdit()
-        form.addRow("Python executable", self.python)
-        form.addRow("YOLO command", self.yolo)
-        form.addRow("Default runs folder", self.runs)
-        form.addRow("Default model", self.model)
-        form.addRow("Default device", self.device)
+        self.language = WheelSafeComboBox()
+        self.language.addItem("繁體中文", "zh_TW")
+        self.language.addItem("English", "en_US")
+        self.language.currentIndexChanged.connect(self._language_changed)
+        self.labels = [QLabel() for _ in range(8)]
+        for label, widget in zip(self.labels, (self.language, self.python, self.yolo, self.runs, self.model, self.device)):
+            form.addRow(label, widget)
         self.managed_location = QLabel(str(self.runtime_manager.managed_runtime_folder()))
         self.managed_location.setWordWrap(True)
         self.runtime_status = QLabel("Not checked")
         self.runtime_status.setWordWrap(True)
-        form.addRow("Managed runtime location", self.managed_location)
-        form.addRow("Runtime status", self.runtime_status)
-        layout.addWidget(box)
+        form.addRow(self.labels[6], self.managed_location)
+        form.addRow(self.labels[7], self.runtime_status)
+        set_tooltip(self.python, "tooltip.runtime.python")
+        set_tooltip(self.yolo, "tooltip.runtime.yolo")
+        layout.addWidget(self.box)
 
         buttons = QHBoxLayout()
-        save = QPushButton("Save Settings")
+        self.save_button = QPushButton()
+        save = self.save_button
         save.setObjectName("primaryButton")
         save.clicked.connect(self.save)
-        reload_button = QPushButton("重新載入")
+        self.reload_button = QPushButton()
+        reload_button = self.reload_button
         reload_button.clicked.connect(self.load)
-        reset_button = QPushButton("Reset to Auto Detect")
+        self.reset_button = QPushButton()
+        reset_button = self.reset_button
         reset_button.clicked.connect(self.reset_runtime_overrides)
         buttons.addStretch()
         buttons.addWidget(reset_button)
@@ -53,7 +63,20 @@ class SettingsPage(QWidget):
         buttons.addWidget(save)
         layout.addLayout(buttons)
         layout.addStretch()
+        self.i18n.language_changed.connect(self._retranslate_ui)
+        self._retranslate_ui()
         self.load()
+
+    def _retranslate_ui(self, _locale: str | None = None) -> None:
+        self.box.setTitle(tr("settings.application"))
+        for label, key in zip(self.labels, ("settings.language", "settings.python", "settings.yolo", "settings.runs", "settings.model", "settings.device", "settings.managed_location", "settings.runtime_status")):
+            label.setText(tr(key))
+        for index in range(self.language.count()):
+            locale = str(self.language.itemData(index))
+            self.language.setItemText(index, tr(f"language.{locale}"))
+        self.save_button.setText(tr("settings.save"))
+        self.reload_button.setText(tr("settings.reload"))
+        self.reset_button.setText(tr("settings.reset"))
 
     def load(self) -> None:
         values = self.config.load()
@@ -62,10 +85,20 @@ class SettingsPage(QWidget):
         self.runs.set_path(str(values["runs_folder"]))
         self.model.setText(str(values["default_model"]))
         self.device.setText(str(values["default_device"]))
+        self.language.blockSignals(True)
+        self.language.setCurrentIndex(max(0, self.language.findData(str(values.get("language", "zh_TW")))))
+        self.language.blockSignals(False)
         self._update_runtime_status()
+
+    def _language_changed(self) -> None:
+        locale = str(self.language.currentData())
+        self.config.save({"language": locale})
+        self.i18n.set_language(locale)
+        self.settings_saved.emit({"language": locale})
 
     def save(self) -> None:
         values = {
+            "language": str(self.language.currentData()),
             "python_executable": self.python.path(),
             "yolo_command": self.yolo.path(),
             "runs_folder": self.runs.path() or "runs/detect",
@@ -75,11 +108,11 @@ class SettingsPage(QWidget):
         try:
             self.config.save(values)
         except OSError as exc:
-            QMessageBox.critical(self, "儲存失敗", str(exc))
+            QMessageBox.critical(self, tr("common.error"), str(exc))
             return
         self.settings_saved.emit(values)
         self._update_runtime_status()
-        QMessageBox.information(self, "Settings", "Settings saved.")
+        QMessageBox.information(self, tr("settings.title"), tr("settings.save"))
 
     def reset_runtime_overrides(self) -> None:
         self.python.set_path("")

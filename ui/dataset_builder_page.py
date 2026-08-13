@@ -6,8 +6,6 @@ from pathlib import Path
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
-    QDoubleSpinBox,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -25,7 +23,7 @@ from PySide6.QtWidgets import (
 from core.config_manager import ConfigManager
 from core.dataset_builder_worker import DatasetBuilderWorker
 from core.report_reader import CATEGORY_FILTERS, FILTER_MODES
-from ui.widgets import PageHeader, PathPicker
+from ui.widgets import PageHeader, PathPicker, WheelSafeComboBox, WheelSafeDoubleSpinBox, bind_text, set_tooltip
 
 
 class DatasetBuilderPage(QWidget):
@@ -49,9 +47,10 @@ class DatasetBuilderPage(QWidget):
         scroll.setWidget(body)
         layout = QVBoxLayout(body)
         layout.setContentsMargins(24, 20, 24, 24)
-        layout.addWidget(PageHeader("Dataset Builder", "Create a new YOLO dataset version from a base dataset and selected hard cases."))
+        layout.addWidget(PageHeader("builder.title", "builder.description"))
 
-        paths = QGroupBox("Inputs & Output")
+        paths = QGroupBox()
+        bind_text(paths, "builder.inputs")
         paths_layout = QGridLayout(paths)
         self.base_yaml = PathPicker("Base Dataset data.yaml", "YAML (*.yaml *.yml)")
         self.hard_report = PathPicker("hard_cases_report.csv", "CSV (*.csv)")
@@ -64,7 +63,8 @@ class DatasetBuilderPage(QWidget):
         paths_layout.addWidget(self.output_folder, 1, 1)
         layout.addWidget(paths)
 
-        selection = QGroupBox("Hard Case Selection")
+        selection = QGroupBox()
+        bind_text(selection, "builder.selection")
         selection_layout = QGridLayout(selection)
         self.category_checks: dict[str, QCheckBox] = {}
         for index, category in enumerate(CATEGORY_FILTERS):
@@ -73,13 +73,14 @@ class DatasetBuilderPage(QWidget):
             selection_layout.addWidget(checkbox, index // 4, index % 4)
             self.category_checks[category] = checkbox
         selection_layout.addWidget(QLabel("Filter Mode"), 2, 0)
-        self.filter_mode = QComboBox()
+        self.filter_mode = WheelSafeComboBox()
         self.filter_mode.addItems(list(FILTER_MODES))
         self.filter_mode.setCurrentText("Primary or Any Flag")
         selection_layout.addWidget(self.filter_mode, 2, 1, 1, 3)
         layout.addWidget(selection)
 
-        split_box = QGroupBox("Sample Split")
+        split_box = QGroupBox()
+        bind_text(split_box, "builder.sample_split")
         split_layout = QHBoxLayout(split_box)
         self.train_ratio = self._ratio_spin(0.80)
         self.val_ratio = self._ratio_spin(0.20)
@@ -90,7 +91,8 @@ class DatasetBuilderPage(QWidget):
         split_layout.addStretch()
         layout.addWidget(split_box)
 
-        options_box = QGroupBox("Build Options")
+        options_box = QGroupBox()
+        bind_text(options_box, "builder.options")
         options_layout = QGridLayout(options_box)
         self.copy_base_images = self._checked("Copy original dataset images", True)
         self.copy_base_labels = self._checked("Copy original dataset labels", True)
@@ -98,19 +100,26 @@ class DatasetBuilderPage(QWidget):
         self.copy_hard_labels = self._checked("Copy labels if found", True)
         self.skip_without_labels = self._checked("Skip samples without labels", False)
         self.overwrite_output = self._checked("Overwrite output folder", False)
+        for widget, key in ((self.base_yaml, "tooltip.builder.base"), (self.hard_report, "tooltip.builder.report"), (self.train_ratio, "tooltip.builder.ratio"), (self.val_ratio, "tooltip.builder.ratio"), (self.test_ratio, "tooltip.builder.ratio"), (self.copy_base_images, "tooltip.builder.copy_base"), (self.include_hard_cases, "tooltip.builder.include"), (self.overwrite_output, "tooltip.builder.overwrite")):
+            set_tooltip(widget, key)
         for index, widget in enumerate((self.copy_base_images, self.copy_base_labels, self.include_hard_cases, self.copy_hard_labels, self.skip_without_labels, self.overwrite_output)):
             options_layout.addWidget(widget, index // 3, index % 3)
         layout.addWidget(options_box)
 
         buttons = QHBoxLayout()
-        self.preview_button = QPushButton("Preview Build")
+        self.preview_button = QPushButton()
+        bind_text(self.preview_button, "builder.preview")
         self.preview_button.setObjectName("primaryButton")
-        self.build_button = QPushButton("Build Dataset")
-        self.cancel_button = QPushButton("Cancel Build")
+        self.build_button = QPushButton()
+        self.cancel_button = QPushButton()
+        bind_text(self.build_button, "builder.build")
+        bind_text(self.cancel_button, "builder.cancel")
         self.cancel_button.setEnabled(False)
-        self.open_output_button = QPushButton("Open Output Folder")
+        self.open_output_button = QPushButton()
+        bind_text(self.open_output_button, "builder.open_output")
         self.open_output_button.setEnabled(False)
-        clear_button = QPushButton("Clear Log")
+        clear_button = QPushButton()
+        bind_text(clear_button, "common.clear_log")
         self.preview_button.clicked.connect(self.preview_build)
         self.build_button.clicked.connect(self.build)
         self.cancel_button.clicked.connect(self.cancel_build)
@@ -134,7 +143,8 @@ class DatasetBuilderPage(QWidget):
         self.preview_summary.setWordWrap(True)
         layout.addWidget(self.preview_summary)
 
-        results = QGroupBox("Build Results")
+        results = QGroupBox()
+        bind_text(results, "builder.results")
         results_layout = QGridLayout(results)
         self.result_values: dict[str, QLineEdit] = {}
         result_fields = (
@@ -155,7 +165,8 @@ class DatasetBuilderPage(QWidget):
         self.result_counts = QLabel("No build results")
         self.result_counts.setWordWrap(True)
         results_layout.addWidget(self.result_counts, len(result_fields), 0, 1, 3)
-        self.use_train_button = QPushButton("Use This Dataset in Train Page")
+        self.use_train_button = QPushButton()
+        bind_text(self.use_train_button, "builder.use_dataset")
         self.use_train_button.setEnabled(False)
         self.use_train_button.clicked.connect(self.use_in_train)
         results_layout.addWidget(self.use_train_button, len(result_fields) + 1, 0, 1, 3)
@@ -171,8 +182,8 @@ class DatasetBuilderPage(QWidget):
         self._load_recent_hard_cases()
 
     @staticmethod
-    def _ratio_spin(value: float) -> QDoubleSpinBox:
-        spin = QDoubleSpinBox()
+    def _ratio_spin(value: float) -> WheelSafeDoubleSpinBox:
+        spin = WheelSafeDoubleSpinBox()
         spin.setRange(0.0, 1.0)
         spin.setDecimals(2)
         spin.setSingleStep(0.05)

@@ -1,5 +1,11 @@
 # Usage
 
+## Language
+
+The default UI language is Traditional Chinese. Open **Language / 語言** in
+Settings to change to English without restarting; the preference is saved
+locally.
+
 ## Pages
 
 - **Train:** configure training parameters, apply presets, start or stop training, and inspect the last run.

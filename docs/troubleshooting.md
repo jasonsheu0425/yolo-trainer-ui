@@ -1,5 +1,11 @@
 # Troubleshooting
 
+## A translation is missing
+
+The interface safely falls back from the selected language to English, then to
+the translation key. Run `python scripts/check_translations.py` when editing a
+translation resource.
+
 ## CUDA is not available
 
 Run `python -c "import torch; print(torch.cuda.is_available())"`. If it returns `False`, verify the NVIDIA driver and install a CUDA-enabled PyTorch build selected for the local environment. CPU execution remains possible but may be much slower.

@@ -4,12 +4,12 @@ import os
 from pathlib import Path
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QCheckBox, QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QMessageBox, QPushButton, QSpinBox, QTextEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QCheckBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QMessageBox, QPushButton, QTextEdit, QVBoxLayout, QWidget
 
 from core.config_manager import ConfigManager
 from core.exporter_process import ExporterProcess
 from core.runtime_manager import RuntimeManager
-from ui.widgets import PageHeader, PathPicker, show_runtime_required
+from ui.widgets import PageHeader, PathPicker, WheelSafeComboBox, WheelSafeSpinBox, bind_text, show_runtime_required
 
 
 class ExportPage(QWidget):
@@ -28,14 +28,16 @@ class ExportPage(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 20, 24, 20)
-        layout.addWidget(PageHeader("Export", "將訓練完成的 .pt 模型匯出為部署格式。"))
+        layout.addWidget(PageHeader("export.title", "export.description"))
         self.model = PathPicker("Model .pt", "PyTorch model (*.pt)")
+        bind_text(self.model.label, "common.model")
         layout.addWidget(self.model)
-        box = QGroupBox("Export Options")
+        box = QGroupBox()
+        bind_text(box, "export.options")
         form = QFormLayout(box)
-        self.format = QComboBox()
+        self.format = WheelSafeComboBox()
         self.format.addItems(["onnx", "engine", "openvino", "coreml", "tflite"])
-        self.opset = QSpinBox()
+        self.opset = WheelSafeSpinBox()
         self.opset.setRange(7, 21)
         self.opset.setValue(12)
         checks = QHBoxLayout()
@@ -47,16 +49,20 @@ class ExportPage(QWidget):
         for widget in (self.dynamic, self.simplify, self.half, self.int8, self.nms):
             checks.addWidget(widget)
         checks.addStretch()
-        form.addRow("Format", self.format)
-        form.addRow("ONNX opset", self.opset)
-        form.addRow("Flags", checks)
+        for text, widget in (("export.format", self.format), ("export.opset", self.opset), ("export.flags", checks)):
+            label = QLabel()
+            bind_text(label, text)
+            form.addRow(label, widget)
         layout.addWidget(box)
         buttons = QHBoxLayout()
-        self.export_button = QPushButton("Export Model")
+        self.export_button = QPushButton()
+        bind_text(self.export_button, "export.start")
         self.export_button.setObjectName("primaryButton")
-        self.stop_button = QPushButton("Stop")
+        self.stop_button = QPushButton()
+        bind_text(self.stop_button, "export.stop")
         self.stop_button.setEnabled(False)
-        self.open_button = QPushButton("Open Output Folder")
+        self.open_button = QPushButton()
+        bind_text(self.open_button, "common.open_folder")
         self.open_button.setEnabled(False)
         self.export_button.clicked.connect(self.export_model)
         self.stop_button.clicked.connect(self.runner.stop)

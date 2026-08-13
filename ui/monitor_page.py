@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QGridLayout, QGroupBox, QHBoxLayout, QLabel, QMess
 from core.config_manager import ConfigManager
 from core.gpu_checker import get_gpu_info
 from core.results_reader import available_series, read_results, scan_runs
-from ui.widgets import PageHeader, PathPicker
+from ui.widgets import PageHeader, PathPicker, bind_text
 
 
 class MonitorPage(QWidget):
@@ -20,7 +20,7 @@ class MonitorPage(QWidget):
         self.config = config
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 20, 24, 20)
-        layout.addWidget(PageHeader("Monitor / Results", "每 2 秒更新 GPU 狀態，並將 YOLO results.csv 繪製成訓練曲線。"))
+        layout.addWidget(PageHeader("monitor.title", "monitor.description"))
         self.tabs = QTabWidget()
         self.tabs.addTab(self._build_gpu_tab(), "GPU Monitor")
         self.tabs.addTab(self._build_results_tab(), "Results")
@@ -38,7 +38,8 @@ class MonitorPage(QWidget):
         self.cuda_warning = QLabel()
         self.cuda_warning.setWordWrap(True)
         layout.addWidget(self.cuda_warning)
-        summary = QGroupBox("Runtime")
+        summary = QGroupBox()
+        bind_text(summary, "monitor.runtime")
         grid = QGridLayout(summary)
         self.torch_value = QLabel("—")
         self.cuda_value = QLabel("—")
@@ -52,7 +53,8 @@ class MonitorPage(QWidget):
         self.gpu_table.setHorizontalHeaderLabels(["#", "GPU", "Util %", "Memory used", "Memory total", "Temp °C", "Power W", "Allocated", "Reserved"])
         self.gpu_table.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(self.gpu_table, 1)
-        refresh = QPushButton("立即更新")
+        refresh = QPushButton()
+        bind_text(refresh, "common.refresh")
         refresh.clicked.connect(self.refresh_gpu)
         layout.addWidget(refresh)
         return tab
@@ -63,7 +65,8 @@ class MonitorPage(QWidget):
         self.results_picker = PathPicker("results.csv", "CSV (*.csv)")
         layout.addWidget(self.results_picker)
         row = QHBoxLayout()
-        load = QPushButton("Load Results")
+        load = QPushButton()
+        bind_text(load, "monitor.load_results")
         load.setObjectName("primaryButton")
         load.clicked.connect(lambda: self.load_results(self.results_picker.path()))
         self.results_status = QLabel("尚未載入")
@@ -84,7 +87,8 @@ class MonitorPage(QWidget):
         self.runs_picker.set_path(default_root)
         layout.addWidget(self.runs_picker)
         row = QHBoxLayout()
-        scan_button = QPushButton("Scan Runs")
+        scan_button = QPushButton()
+        bind_text(scan_button, "monitor.scan_runs")
         scan_button.setObjectName("primaryButton")
         scan_button.clicked.connect(self.scan_run_browser)
         self.runs_status = QLabel("Not scanned")
@@ -146,7 +150,8 @@ class MonitorPage(QWidget):
             ]
             for column, value in enumerate(values):
                 self.runs_table.setItem(row, column, QTableWidgetItem(str(value)))
-            open_button = QPushButton("Open Folder")
+            open_button = QPushButton()
+            bind_text(open_button, "common.open_folder")
             open_button.clicked.connect(lambda _checked=False, path=run["path"]: self._open_run_folder(path))
             self.runs_table.setCellWidget(row, len(values), open_button)
         self.runs_table.setSortingEnabled(True)

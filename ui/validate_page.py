@@ -7,8 +7,6 @@ from PySide6.QtCore import Signal
 from PySide6.QtGui import QDoubleValidator
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
-    QDoubleSpinBox,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -17,7 +15,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
-    QSpinBox,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -33,7 +30,7 @@ from core.results_reader import (
 )
 from core.runtime_manager import RuntimeManager
 from core.validator_process import ValidatorProcess
-from ui.widgets import PageHeader, PathPicker, show_runtime_required
+from ui.widgets import PageHeader, PathPicker, WheelSafeComboBox, WheelSafeDoubleSpinBox, WheelSafeSpinBox, bind_text, set_tooltip, show_runtime_required
 
 
 class ValidatePage(QWidget):
@@ -62,49 +59,60 @@ class ValidatePage(QWidget):
         scroll.setWidget(body)
         layout = QVBoxLayout(body)
         layout.setContentsMargins(24, 20, 24, 24)
-        layout.addWidget(PageHeader("Validate / Evaluate", "Evaluate a YOLO model on the val or test split without blocking the UI."))
+        layout.addWidget(PageHeader("validate.title", "validate.description"))
 
-        inputs = QGroupBox("Model & Dataset")
+        inputs = QGroupBox()
+        bind_text(inputs, "validate.inputs")
         input_layout = QVBoxLayout(inputs)
         self.model = PathPicker("Model (.pt or .onnx)", "YOLO model (*.pt *.onnx)")
         self.data = PathPicker("Dataset YAML", "YAML (*.yaml *.yml)")
+        bind_text(self.model.label, "common.model")
+        bind_text(self.data.label, "common.dataset_yaml")
         input_layout.addWidget(self.model)
         input_layout.addWidget(self.data)
         layout.addWidget(inputs)
 
-        options = QGroupBox("Validation Parameters")
+        options = QGroupBox()
+        bind_text(options, "validate.parameters")
         grid = QGridLayout(options)
-        self.task = QComboBox()
+        self.task = WheelSafeComboBox()
         self.task.addItems(["detect", "segment", "pose", "obb", "classify"])
         self.imgsz = self._spin(32, 4096, 640)
         self.batch = self._spin(1, 4096, 8)
         self.device = QLineEdit(str(config.get("default_device", "0")))
-        self.split = QComboBox()
+        self.split = WheelSafeComboBox()
         self.split.addItems(["val", "test"])
         self.conf = QLineEdit()
         self.conf.setPlaceholderText("Optional")
         self.conf.setValidator(QDoubleValidator(0.0, 1.0, 4, self.conf))
-        self.iou = QDoubleSpinBox()
+        self.iou = WheelSafeDoubleSpinBox()
         self.iou.setRange(0.0, 1.0)
         self.iou.setDecimals(2)
         self.iou.setSingleStep(0.05)
         self.iou.setValue(0.70)
         self.project = QLineEdit(str(config.get("runs_folder", "runs/detect")))
         self.name = QLineEdit("val_ui")
+        for widget, key in ((self.data, "tooltip.validate.dataset"), (self.split, "tooltip.validate.split"), (self.iou, "tooltip.predict.iou")):
+            set_tooltip(widget, key)
         fields = [
-            ("Task", self.task), ("Image size", self.imgsz), ("Batch", self.batch),
-            ("Device", self.device), ("Split", self.split), ("Confidence", self.conf),
-            ("IoU", self.iou), ("Project", self.project), ("Run name", self.name),
+            ("train.task", self.task), ("common.image_size", self.imgsz), ("common.batch", self.batch),
+            ("common.device", self.device), ("validate.split", self.split), ("common.confidence", self.conf),
+            ("common.iou", self.iou), ("common.project", self.project), ("common.run_name", self.name),
         ]
-        for index, (label, widget) in enumerate(fields):
+        for index, (key, widget) in enumerate(fields):
             row, column = divmod(index, 3)
-            grid.addWidget(QLabel(label), row * 2, column)
+            label = QLabel()
+            bind_text(label, key)
+            grid.addWidget(label, row * 2, column)
             grid.addWidget(widget, row * 2 + 1, column)
         checks = QHBoxLayout()
-        self.plots = QCheckBox("Plots")
+        self.plots = QCheckBox()
+        bind_text(self.plots, "validate.plots")
         self.plots.setChecked(True)
-        self.save_json = QCheckBox("Save JSON")
-        self.save_txt = QCheckBox("Save TXT")
+        self.save_json = QCheckBox()
+        self.save_txt = QCheckBox()
+        bind_text(self.save_json, "validate.save_json")
+        bind_text(self.save_txt, "validate.save_txt")
         checks.addWidget(self.plots)
         checks.addWidget(self.save_json)
         checks.addWidget(self.save_txt)
@@ -112,7 +120,8 @@ class ValidatePage(QWidget):
         grid.addLayout(checks, 6, 0, 1, 3)
         layout.addWidget(options)
 
-        preview_box = QGroupBox("Command Preview")
+        preview_box = QGroupBox()
+        bind_text(preview_box, "common.command_preview")
         preview_layout = QVBoxLayout(preview_box)
         self.preview = QLineEdit()
         self.preview.setReadOnly(True)
@@ -120,13 +129,17 @@ class ValidatePage(QWidget):
         layout.addWidget(preview_box)
 
         buttons = QHBoxLayout()
-        self.start_button = QPushButton("Start Validation")
+        self.start_button = QPushButton()
+        bind_text(self.start_button, "validate.start")
         self.start_button.setObjectName("primaryButton")
-        self.stop_button = QPushButton("Stop Validation")
+        self.stop_button = QPushButton()
+        bind_text(self.stop_button, "validate.stop")
         self.stop_button.setEnabled(False)
-        self.open_button = QPushButton("Open Output Folder")
+        self.open_button = QPushButton()
+        bind_text(self.open_button, "common.open_folder")
         self.open_button.setEnabled(False)
-        clear_button = QPushButton("Clear Log")
+        clear_button = QPushButton()
+        bind_text(clear_button, "common.clear_log")
         self.start_button.clicked.connect(self.start_validation)
         self.stop_button.clicked.connect(self.runner.stop)
         self.open_button.clicked.connect(self.open_output_folder)
@@ -157,14 +170,15 @@ class ValidatePage(QWidget):
         self.update_preview()
 
     @staticmethod
-    def _spin(minimum: int, maximum: int, value: int) -> QSpinBox:
-        spin = QSpinBox()
+    def _spin(minimum: int, maximum: int, value: int) -> WheelSafeSpinBox:
+        spin = WheelSafeSpinBox()
         spin.setRange(minimum, maximum)
         spin.setValue(value)
         return spin
 
     def _build_metrics_box(self) -> QGroupBox:
-        box = QGroupBox("Validation Metrics Summary")
+        box = QGroupBox()
+        bind_text(box, "validate.metrics")
         grid = QGridLayout(box)
         self.metric_values: dict[str, QLabel] = {}
         for column, (key, title) in enumerate((("precision", "Precision"), ("recall", "Recall"), ("map50", "mAP50"), ("map50_95", "mAP50-95"))):
@@ -182,7 +196,8 @@ class ValidatePage(QWidget):
         return box
 
     def _build_artifacts_box(self) -> QGroupBox:
-        box = QGroupBox("Validation Artifacts")
+        box = QGroupBox()
+        bind_text(box, "validate.artifacts")
         grid = QGridLayout(box)
         self.artifact_values: dict[str, QLineEdit] = {}
         self.artifact_buttons: dict[str, tuple[QPushButton, QPushButton]] = {}
@@ -191,8 +206,10 @@ class ValidatePage(QWidget):
             value = QLineEdit("Not found")
             value.setReadOnly(True)
             grid.addWidget(value, row, 1)
-            open_file = QPushButton("Open File")
-            open_folder = QPushButton("Open Folder")
+            open_file = QPushButton()
+            open_folder = QPushButton()
+            bind_text(open_file, "common.open_file")
+            bind_text(open_folder, "common.open_folder")
             open_file.setEnabled(False)
             open_folder.setEnabled(False)
             open_file.clicked.connect(lambda _checked=False, key=name: self._open_artifact(key, False))

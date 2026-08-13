@@ -15,6 +15,7 @@ set "PYTHON=.venv\Scripts\python.exe"
   --add-data "configs\app_settings.example.json;configs" ^
   --add-data "docs;docs" ^
   --add-data "assets;assets" ^
+  --add-data "i18n;i18n" ^
   --collect-data matplotlib ^
   --hidden-import yaml ^
   --hidden-import psutil ^

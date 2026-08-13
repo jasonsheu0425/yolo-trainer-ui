@@ -7,7 +7,6 @@ from pathlib import Path
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QFileDialog,
     QGridLayout,
     QGroupBox,
@@ -17,7 +16,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
-    QSpinBox,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -27,7 +25,7 @@ from core.config_manager import ConfigManager
 from core.results_reader import RUN_ARTIFACTS, scan_run_folder
 from core.runtime_manager import RuntimeManager
 from core.trainer_process import TrainerProcess
-from ui.widgets import PageHeader, PathPicker, show_runtime_required
+from ui.widgets import PageHeader, PathPicker, WheelSafeComboBox, WheelSafeSpinBox, bind_combo_items, bind_text, set_tooltip, show_runtime_required
 
 
 class TrainPage(QWidget):
@@ -62,40 +60,51 @@ class TrainPage(QWidget):
         scroll.setWidget(body)
         layout = QVBoxLayout(body)
         layout.setContentsMargins(24, 20, 24, 24)
-        layout.addWidget(PageHeader("Train", "設定 Ultralytics YOLO 參數，並在不凍結介面的情況下執行訓練。"))
+        layout.addWidget(PageHeader("train.title", "train.description"))
 
-        source_box = QGroupBox("Dataset & Model")
+        source_box = QGroupBox()
+        bind_text(source_box, "train.dataset_model")
         source_layout = QVBoxLayout(source_box)
         self.dataset = PathPicker("Dataset YAML", "YAML (*.yaml *.yml)")
+        bind_text(self.dataset.label, "common.dataset_yaml")
         self.dataset.path_changed.connect(self._dataset_changed)
         source_layout.addWidget(self.dataset)
         model_row = QHBoxLayout()
-        model_row.addWidget(QLabel("Model"))
-        self.model = QComboBox()
+        model_label = QLabel()
+        bind_text(model_label, "common.model")
+        model_row.addWidget(model_label)
+        self.model = WheelSafeComboBox()
         self.model.setEditable(True)
         self.model.addItems(["yolov8n.pt", "yolov8s.pt", "yolov8m.pt", "yolov8l.pt", "yolo11n.pt", "yolo11s.pt", "yolo26n.pt", "yolo26s.pt"])
         self.model.currentTextChanged.connect(self.update_preview)
-        custom = QPushButton("Custom .pt…")
+        set_tooltip(self.model, "tooltip.train.model")
+        custom = QPushButton()
+        bind_text(custom, "train.custom_model")
         custom.clicked.connect(self._select_model)
         model_row.addWidget(self.model, 1)
         model_row.addWidget(custom)
         source_layout.addLayout(model_row)
         layout.addWidget(source_box)
 
-        preset_box = QGroupBox("Training Presets")
+        preset_box = QGroupBox()
+        bind_text(preset_box, "train.presets")
         preset_layout = QHBoxLayout(preset_box)
-        preset_layout.addWidget(QLabel("Preset"))
-        self.preset = QComboBox()
-        self.preset.addItem("Select a preset...")
-        self.preset.addItems(list(self.PRESETS))
+        preset_label = QLabel()
+        bind_text(preset_label, "train.preset")
+        preset_layout.addWidget(preset_label)
+        self.preset = WheelSafeComboBox()
+        bind_combo_items(self.preset, [("train.select_preset", ""), ("train.smoke", "Smoke Test"), ("train.small", "Small Dataset Conservative"), ("train.standard", "Standard YOLOv8n"), ("train.accuracy", "Higher Accuracy YOLOv8s")])
         self.preset.currentTextChanged.connect(self.apply_preset)
         preset_layout.addWidget(self.preset, 1)
-        preset_layout.addWidget(QLabel("Selecting a preset only fills the fields; it never starts training."))
+        preset_hint = QLabel()
+        bind_text(preset_hint, "train.preset_hint")
+        preset_layout.addWidget(preset_hint)
         layout.addWidget(preset_box)
 
-        params_box = QGroupBox("Training Parameters")
+        params_box = QGroupBox()
+        bind_text(params_box, "train.parameters")
         grid = QGridLayout(params_box)
-        self.task = QComboBox()
+        self.task = WheelSafeComboBox()
         self.task.addItems(["detect", "segment", "classify", "pose", "obb"])
         self.imgsz = self._spin(32, 4096, 640)
         self.epochs = self._spin(1, 100000, 100)
@@ -109,14 +118,21 @@ class TrainPage(QWidget):
         self.pretrained = QCheckBox("Pretrained")
         self.pretrained.setChecked(True)
         self.cache = QCheckBox("Cache")
+        bind_text(self.resume, "train.resume")
+        bind_text(self.pretrained, "train.pretrained")
+        bind_text(self.cache, "train.cache")
+        for widget, key in ((self.dataset, "tooltip.train.dataset"), (self.imgsz, "tooltip.train.imgsz"), (self.epochs, "tooltip.train.epochs"), (self.batch, "tooltip.train.batch"), (self.device, "tooltip.train.device"), (self.workers, "tooltip.train.workers"), (self.project, "tooltip.train.project"), (self.name, "tooltip.train.name"), (self.patience, "tooltip.train.patience")):
+            set_tooltip(widget, key)
         fields = [
-            ("Task", self.task), ("Image size", self.imgsz), ("Epochs", self.epochs),
-            ("Batch", self.batch), ("Device", self.device), ("Workers", self.workers),
-            ("Project", self.project), ("Run name", self.name), ("Patience", self.patience),
+            ("train.task", self.task), ("common.image_size", self.imgsz), ("train.epochs", self.epochs),
+            ("common.batch", self.batch), ("common.device", self.device), ("train.workers", self.workers),
+            ("common.project", self.project), ("common.run_name", self.name), ("train.patience", self.patience),
         ]
-        for index, (label, widget) in enumerate(fields):
+        for index, (key, widget) in enumerate(fields):
             row, column = divmod(index, 3)
-            grid.addWidget(QLabel(label), row * 2, column)
+            label = QLabel()
+            bind_text(label, key)
+            grid.addWidget(label, row * 2, column)
             grid.addWidget(widget, row * 2 + 1, column)
         checks = QHBoxLayout()
         checks.addWidget(self.resume)
@@ -126,14 +142,16 @@ class TrainPage(QWidget):
         grid.addLayout(checks, 6, 0, 1, 3)
         layout.addWidget(params_box)
 
-        advanced_box = QGroupBox("Advanced Parameters")
+        advanced_box = QGroupBox()
+        bind_text(advanced_box, "train.advanced")
         advanced_layout = QVBoxLayout(advanced_box)
         self.advanced = QLineEdit()
         self.advanced.setPlaceholderText("例如：lr0=0.01 optimizer=auto cos_lr=True")
         advanced_layout.addWidget(self.advanced)
         layout.addWidget(advanced_box)
 
-        preview_box = QGroupBox("Command Preview")
+        preview_box = QGroupBox()
+        bind_text(preview_box, "common.command_preview")
         preview_layout = QVBoxLayout(preview_box)
         self.preview = QLineEdit()
         self.preview.setReadOnly(True)
@@ -141,12 +159,16 @@ class TrainPage(QWidget):
         layout.addWidget(preview_box)
 
         buttons = QHBoxLayout()
-        self.start_button = QPushButton("Start Training")
+        self.start_button = QPushButton()
+        bind_text(self.start_button, "train.start")
         self.start_button.setObjectName("primaryButton")
-        self.stop_button = QPushButton("Stop Training")
+        self.stop_button = QPushButton()
+        bind_text(self.stop_button, "train.stop")
         self.stop_button.setEnabled(False)
-        open_button = QPushButton("Open Runs Folder")
-        clear_button = QPushButton("Clear Log")
+        open_button = QPushButton()
+        clear_button = QPushButton()
+        bind_text(open_button, "train.open_runs")
+        bind_text(clear_button, "common.clear_log")
         self.start_button.clicked.connect(self.start_training)
         self.stop_button.clicked.connect(self.runner.stop)
         open_button.clicked.connect(self.open_runs_folder)
@@ -171,8 +193,8 @@ class TrainPage(QWidget):
         self.update_preview()
 
     @staticmethod
-    def _spin(minimum: int, maximum: int, value: int) -> QSpinBox:
-        box = QSpinBox()
+    def _spin(minimum: int, maximum: int, value: int) -> WheelSafeSpinBox:
+        box = WheelSafeSpinBox()
         box.setRange(minimum, maximum)
         box.setValue(value)
         return box
@@ -185,8 +207,8 @@ class TrainPage(QWidget):
             self._update_run_summary(str(values["last_run_folder"]))
         self.update_preview()
 
-    def apply_preset(self, name: str) -> None:
-        values = self.PRESETS.get(name)
+    def apply_preset(self, _name: str) -> None:
+        values = self.PRESETS.get(str(self.preset.currentData() or ""))
         if not values:
             return
         if "model" in values:
@@ -271,13 +293,17 @@ class TrainPage(QWidget):
                 self.results_found.emit(str(results))
 
     def _create_run_summary(self) -> QGroupBox:
-        box = QGroupBox("Last Run Summary")
+        box = QGroupBox()
+        bind_text(box, "train.last_summary")
         grid = QGridLayout(box)
-        grid.addWidget(QLabel("Run folder"), 0, 0)
+        run_label = QLabel()
+        bind_text(run_label, "train.run_folder")
+        grid.addWidget(run_label, 0, 0)
         self.run_folder_value = QLineEdit("Not found")
         self.run_folder_value.setReadOnly(True)
         grid.addWidget(self.run_folder_value, 0, 1)
-        self.run_folder_open = QPushButton("Open Folder")
+        self.run_folder_open = QPushButton()
+        bind_text(self.run_folder_open, "common.open_folder")
         self.run_folder_open.setEnabled(False)
         self.run_folder_open.clicked.connect(lambda: self._open_run_artifact("run_folder", True))
         grid.addWidget(self.run_folder_open, 0, 2, 1, 2)
@@ -288,8 +314,10 @@ class TrainPage(QWidget):
             value = QLineEdit("Not found")
             value.setReadOnly(True)
             grid.addWidget(value, row, 1)
-            open_file = QPushButton("Open File")
-            open_folder = QPushButton("Open Folder")
+            open_file = QPushButton()
+            open_folder = QPushButton()
+            bind_text(open_file, "common.open_file")
+            bind_text(open_folder, "common.open_folder")
             open_file.clicked.connect(lambda _checked=False, key=name: self._open_run_artifact(key, False))
             open_folder.clicked.connect(lambda _checked=False, key=name: self._open_run_artifact(key, True))
             grid.addWidget(open_file, row, 2)

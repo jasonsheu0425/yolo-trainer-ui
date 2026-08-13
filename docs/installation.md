@@ -1,5 +1,8 @@
 # Installation
 
+The application starts in Traditional Chinese by default. You can change the
+interface language from **Language / 語言** in Settings after startup.
+
 ## Source code
 
 YOLO Trainer UI targets Windows 10/11 and Python 3.10–3.12. From PowerShell in the repository root:

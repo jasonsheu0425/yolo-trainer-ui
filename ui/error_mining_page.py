@@ -7,8 +7,6 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
-    QDoubleSpinBox,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -33,7 +31,7 @@ from core.report_reader import (
     read_hard_cases_report,
     summarize_report,
 )
-from ui.widgets import PageHeader, PathPicker
+from ui.widgets import PageHeader, PathPicker, WheelSafeComboBox, WheelSafeDoubleSpinBox, bind_text, set_tooltip
 
 
 class ImagePreviewLabel(QLabel):
@@ -97,9 +95,10 @@ class ErrorMiningPage(QWidget):
         scroll.setWidget(body)
         layout = QVBoxLayout(body)
         layout.setContentsMargins(24, 20, 24, 24)
-        layout.addWidget(PageHeader("Error Mining", "Collect low-confidence and incomplete prediction cases for dataset improvement."))
+        layout.addWidget(PageHeader("mining.title", "mining.description"))
 
-        paths = QGroupBox("Folders")
+        paths = QGroupBox()
+        bind_text(paths, "mining.folders")
         paths_layout = QGridLayout(paths)
         self.run_folder = PathPicker("Predict or validation output folder", directory=True)
         self.source_folder = PathPicker("Original source folder (optional)", directory=True)
@@ -114,12 +113,13 @@ class ErrorMiningPage(QWidget):
         paths_layout.addWidget(self.output_folder, 1, 1)
         layout.addWidget(paths)
 
-        ground_truth = QGroupBox("Ground Truth Comparison")
+        ground_truth = QGroupBox()
+        bind_text(ground_truth, "mining.ground_truth")
         ground_truth_layout = QGridLayout(ground_truth)
         self.ground_truth_labels = PathPicker("Ground Truth Labels Folder", directory=True)
         self.class_names_yaml = PathPicker("Class Names Source (optional data.yaml)", "YAML (*.yaml *.yml)")
         self.enable_ground_truth = QCheckBox("Enable Ground Truth Comparison")
-        self.iou_threshold = QDoubleSpinBox()
+        self.iou_threshold = WheelSafeDoubleSpinBox()
         self.iou_threshold.setRange(0.0, 1.0)
         self.iou_threshold.setDecimals(2)
         self.iou_threshold.setSingleStep(0.05)
@@ -134,10 +134,13 @@ class ErrorMiningPage(QWidget):
         ground_truth_layout.addLayout(iou_row, 1, 1)
         layout.addWidget(ground_truth)
 
-        options = QGroupBox("Mining Options")
+        options = QGroupBox()
+        bind_text(options, "mining.options")
         options_layout = QHBoxLayout(options)
         options_layout.addWidget(QLabel("Low confidence threshold"))
-        self.low_confidence = QDoubleSpinBox()
+        self.low_confidence = WheelSafeDoubleSpinBox()
+        set_tooltip(self.iou_threshold, "tooltip.mining.iou")
+        set_tooltip(self.low_confidence, "tooltip.mining.conf")
         self.low_confidence.setRange(0.0, 1.0)
         self.low_confidence.setDecimals(2)
         self.low_confidence.setSingleStep(0.05)
@@ -157,13 +160,17 @@ class ErrorMiningPage(QWidget):
         layout.addWidget(options)
 
         buttons = QHBoxLayout()
-        self.scan_button = QPushButton("Scan")
+        self.scan_button = QPushButton()
+        bind_text(self.scan_button, "mining.scan")
         self.scan_button.setObjectName("primaryButton")
-        self.export_button = QPushButton("Export Hard Cases")
+        self.export_button = QPushButton()
+        bind_text(self.export_button, "mining.export")
         self.export_button.setEnabled(False)
-        self.open_button = QPushButton("Open Hard Cases Folder")
+        self.open_button = QPushButton()
+        bind_text(self.open_button, "mining.open_hard_cases")
         self.open_button.setEnabled(False)
-        clear_button = QPushButton("Clear Log")
+        clear_button = QPushButton()
+        bind_text(clear_button, "common.clear_log")
         self.scan_button.clicked.connect(self.scan)
         self.export_button.clicked.connect(self.export)
         self.open_button.clicked.connect(self.open_hard_cases_folder)
@@ -199,23 +206,25 @@ class ErrorMiningPage(QWidget):
         self.config.settings.update(values)
 
     def _build_report_viewer(self) -> QGroupBox:
-        box = QGroupBox("Error Mining Report Viewer")
+        box = QGroupBox()
+        bind_text(box, "mining.report_viewer")
         layout = QVBoxLayout(box)
         self.report_picker = PathPicker("hard_cases_report.csv", "CSV (*.csv)")
         layout.addWidget(self.report_picker)
 
         controls = QHBoxLayout()
-        load_button = QPushButton("Load Report")
+        load_button = QPushButton()
+        bind_text(load_button, "mining.load_report")
         load_button.setObjectName("primaryButton")
         load_button.clicked.connect(self.load_report)
         controls.addWidget(load_button)
         controls.addWidget(QLabel("Filter Mode"))
-        self.report_filter_mode = QComboBox()
+        self.report_filter_mode = WheelSafeComboBox()
         self.report_filter_mode.addItems(list(FILTER_MODES))
         self.report_filter_mode.setCurrentText("Primary or Any Flag")
         controls.addWidget(self.report_filter_mode)
         controls.addWidget(QLabel("Category"))
-        self.report_category = QComboBox()
+        self.report_category = WheelSafeComboBox()
         self.report_category.addItems(["All", *CATEGORY_FILTERS])
         controls.addWidget(self.report_category)
         self.report_search = QLineEdit()
@@ -265,11 +274,16 @@ class ErrorMiningPage(QWidget):
         layout.addLayout(preview_row)
 
         actions = QHBoxLayout()
-        open_image = QPushButton("Open Image")
-        open_image_folder = QPushButton("Open Image Folder")
-        open_prediction = QPushButton("Open Prediction Label")
-        open_ground_truth = QPushButton("Open Ground Truth Label")
-        open_hard_cases = QPushButton("Open Hard Cases Folder")
+        open_image = QPushButton()
+        open_image_folder = QPushButton()
+        open_prediction = QPushButton()
+        open_ground_truth = QPushButton()
+        open_hard_cases = QPushButton()
+        bind_text(open_image, "mining.open_image")
+        bind_text(open_image_folder, "mining.open_image_folder")
+        bind_text(open_prediction, "mining.open_prediction")
+        bind_text(open_ground_truth, "mining.open_ground_truth")
+        bind_text(open_hard_cases, "mining.open_hard_cases")
         open_image.clicked.connect(self.open_report_image)
         open_image_folder.clicked.connect(self.open_report_image_folder)
         open_prediction.clicked.connect(lambda: self.open_report_label("prediction_label_path"))

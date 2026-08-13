@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 from core.config_manager import ConfigManager
 from core.runtime_manager import RuntimeManager
 from core.runtime_worker import RuntimeWorker
-from ui.widgets import PageHeader
+from ui.widgets import PageHeader, bind_text
 
 
 class RuntimePage(QWidget):
@@ -66,14 +66,15 @@ class RuntimePage(QWidget):
         scroll.setWidget(body)
         layout = QVBoxLayout(body)
         layout.setContentsMargins(24, 20, 24, 24)
-        layout.addWidget(PageHeader("Runtime / Environment", "Detect Python, Ultralytics, PyTorch, CUDA, and configure a per-user managed YOLO runtime."))
+        layout.addWidget(PageHeader("runtime.title", "runtime.description"))
 
         self.status = QLabel("Not checked")
         self.status.setWordWrap(True)
         self.status.setProperty("state", "warning")
         layout.addWidget(self.status)
 
-        environment = QGroupBox("Environment Status")
+        environment = QGroupBox()
+        bind_text(environment, "runtime.environment")
         form = QFormLayout(environment)
         self.values: dict[str, QLabel] = {}
         for key, title in self.FIELD_LABELS.items():
@@ -84,17 +85,24 @@ class RuntimePage(QWidget):
             self.values[key] = value
         layout.addWidget(environment)
 
-        actions = QGroupBox("Runtime Actions")
+        actions = QGroupBox()
+        bind_text(actions, "runtime.actions")
         action_layout = QVBoxLayout(actions)
         row = QHBoxLayout()
-        self.diagnostics_button = QPushButton("Run Diagnostics")
+        self.diagnostics_button = QPushButton()
+        bind_text(self.diagnostics_button, "runtime.diagnostics")
         self.diagnostics_button.setObjectName("primaryButton")
-        self.create_button = QPushButton("Create Managed YOLO Environment")
-        self.cancel_button = QPushButton("Cancel")
+        self.create_button = QPushButton()
+        self.cancel_button = QPushButton()
+        bind_text(self.create_button, "runtime.create")
+        bind_text(self.cancel_button, "common.cancel")
         self.cancel_button.setEnabled(False)
-        settings_button = QPushButton("Open Settings")
-        guide_button = QPushButton("Open PyTorch Installation Guide")
-        folder_button = QPushButton("Open Managed Runtime Folder")
+        settings_button = QPushButton()
+        guide_button = QPushButton()
+        folder_button = QPushButton()
+        bind_text(settings_button, "runtime.open_settings")
+        bind_text(guide_button, "runtime.guide")
+        bind_text(folder_button, "runtime.open_folder")
         self.diagnostics_button.clicked.connect(self.run_diagnostics)
         self.create_button.clicked.connect(self.create_managed_runtime)
         self.cancel_button.clicked.connect(self.cancel)
@@ -114,7 +122,8 @@ class RuntimePage(QWidget):
         action_layout.addWidget(QLabel("Managed setup installs the standard Ultralytics package. It does not force a specific CUDA wheel; use the PyTorch guide if GPU support is unavailable."))
         layout.addWidget(actions)
 
-        log_box = QGroupBox("Diagnostics / Setup Log")
+        log_box = QGroupBox()
+        bind_text(log_box, "runtime.log")
         log_layout = QVBoxLayout(log_box)
         self.log = QTextEdit()
         self.log.setReadOnly(True)

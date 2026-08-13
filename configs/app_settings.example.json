@@ -1,4 +1,5 @@
 {
+  "language": "zh_TW",
   "yolo_command": "",
   "python_executable": "",
   "runs_folder": "runs/detect",

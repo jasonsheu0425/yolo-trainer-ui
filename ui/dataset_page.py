@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.dataset_checker import check_dataset
-from ui.widgets import PageHeader, PathPicker
+from ui.widgets import PageHeader, PathPicker, bind_text
 
 
 class DatasetPage(QWidget):
@@ -22,11 +22,13 @@ class DatasetPage(QWidget):
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 20, 24, 20)
-        layout.addWidget(PageHeader("Dataset Check", "檢查 YAML、影像/標籤配對、YOLO 座標格式與類別分布。"))
+        layout.addWidget(PageHeader("dataset.title", "dataset.description"))
         self.yaml_picker = PathPicker("Dataset YAML", "YAML (*.yaml *.yml)")
+        bind_text(self.yaml_picker.label, "common.dataset_yaml")
         layout.addWidget(self.yaml_picker)
         row = QHBoxLayout()
-        self.check_button = QPushButton("Check Dataset")
+        self.check_button = QPushButton()
+        bind_text(self.check_button, "dataset.check")
         self.check_button.setObjectName("primaryButton")
         self.check_button.clicked.connect(self.run_check)
         self.status = QLabel("尚未檢查")
@@ -88,4 +90,3 @@ class DatasetPage(QWidget):
         for row, (key, value) in enumerate(values.items()):
             table.setItem(row, 0, QTableWidgetItem(str(key)))
             table.setItem(row, 1, QTableWidgetItem(str(value)))
-

@@ -6,8 +6,6 @@ from pathlib import Path
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
-    QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -15,7 +13,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QSpinBox,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -24,7 +21,7 @@ from PySide6.QtWidgets import (
 from core.config_manager import ConfigManager
 from core.predictor_process import PredictorProcess
 from core.runtime_manager import RuntimeManager
-from ui.widgets import PageHeader, PathPicker, show_runtime_required
+from ui.widgets import PageHeader, PathPicker, WheelSafeComboBox, WheelSafeDoubleSpinBox, WheelSafeSpinBox, bind_combo_items, bind_text, set_tooltip, show_runtime_required
 
 
 class PredictPage(QWidget):
@@ -44,47 +41,57 @@ class PredictPage(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 20, 24, 20)
-        layout.addWidget(PageHeader("Predict / Test", "Run YOLO inference on an image, folder, or video without blocking the UI."))
+        layout.addWidget(PageHeader("predict.title", "predict.description"))
 
-        inputs = QGroupBox("Model & Source")
+        inputs = QGroupBox()
+        bind_text(inputs, "predict.inputs")
         input_layout = QVBoxLayout(inputs)
         self.model = PathPicker("Model (.pt or .onnx)", "YOLO model (*.pt *.onnx)")
+        bind_text(self.model.label, "common.model")
         input_layout.addWidget(self.model)
         source_type_row = QHBoxLayout()
-        source_type_row.addWidget(QLabel("Source type"))
-        self.source_type = QComboBox()
-        self.source_type.addItems(["Single image", "Image folder", "Video file"])
+        source_type_label = QLabel()
+        bind_text(source_type_label, "predict.source_type")
+        source_type_row.addWidget(source_type_label)
+        self.source_type = WheelSafeComboBox()
+        bind_combo_items(self.source_type, [("predict.single_image", "single_image"), ("predict.image_folder", "image_folder"), ("predict.video", "video")])
         source_type_row.addWidget(self.source_type, 1)
         input_layout.addLayout(source_type_row)
         self.source = PathPicker("Source", "Images (*.jpg *.jpeg *.png *.bmp *.webp)")
+        bind_text(self.source.label, "common.source")
         input_layout.addWidget(self.source)
         layout.addWidget(inputs)
 
-        options = QGroupBox("Prediction Parameters")
+        options = QGroupBox()
+        bind_text(options, "predict.parameters")
         form = QFormLayout(options)
-        self.imgsz = QSpinBox()
+        self.imgsz = WheelSafeSpinBox()
         self.imgsz.setRange(32, 4096)
         self.imgsz.setValue(640)
         self.conf = self._ratio_spin(0.25)
         self.iou = self._ratio_spin(0.70)
         self.device = QLineEdit(str(config.get("default_device", "0")))
-        self.save = QCheckBox("Save prediction outputs")
+        self.save = QCheckBox()
+        bind_text(self.save, "predict.save_outputs")
         self.save.setChecked(True)
-        self.save_txt = QCheckBox("Save TXT labels")
-        self.save_conf = QCheckBox("Save confidence values")
+        self.save_txt = QCheckBox()
+        self.save_conf = QCheckBox()
+        bind_text(self.save_txt, "predict.save_txt")
+        bind_text(self.save_conf, "predict.save_conf")
+        for widget, key in ((self.source, "tooltip.predict.source"), (self.source_type, "tooltip.predict.source"), (self.conf, "tooltip.predict.conf"), (self.iou, "tooltip.predict.iou"), (self.save_txt, "tooltip.predict.save_txt"), (self.save_conf, "tooltip.predict.save_conf")):
+            set_tooltip(widget, key)
         label_options = QHBoxLayout()
         label_options.addWidget(self.save_txt)
         label_options.addWidget(self.save_conf)
         label_options.addStretch()
-        form.addRow("Image size", self.imgsz)
-        form.addRow("Confidence", self.conf)
-        form.addRow("IoU", self.iou)
-        form.addRow("Device", self.device)
-        form.addRow("Save", self.save)
-        form.addRow("Prediction labels", label_options)
+        for key, widget in (("common.image_size", self.imgsz), ("common.confidence", self.conf), ("common.iou", self.iou), ("common.device", self.device), ("common.save", self.save), ("predict.labels", label_options)):
+            label = QLabel()
+            bind_text(label, key)
+            form.addRow(label, widget)
         layout.addWidget(options)
 
-        preview_box = QGroupBox("Command Preview")
+        preview_box = QGroupBox()
+        bind_text(preview_box, "common.command_preview")
         preview_layout = QVBoxLayout(preview_box)
         self.preview = QLineEdit()
         self.preview.setReadOnly(True)
@@ -92,13 +99,17 @@ class PredictPage(QWidget):
         layout.addWidget(preview_box)
 
         buttons = QHBoxLayout()
-        self.start_button = QPushButton("Start Predict")
+        self.start_button = QPushButton()
+        bind_text(self.start_button, "predict.start")
         self.start_button.setObjectName("primaryButton")
-        self.stop_button = QPushButton("Stop Predict")
+        self.stop_button = QPushButton()
+        bind_text(self.stop_button, "predict.stop")
         self.stop_button.setEnabled(False)
-        self.open_button = QPushButton("Open Output Folder")
+        self.open_button = QPushButton()
+        bind_text(self.open_button, "common.open_folder")
         self.open_button.setEnabled(False)
-        clear_button = QPushButton("Clear Log")
+        clear_button = QPushButton()
+        bind_text(clear_button, "common.clear_log")
         self.start_button.clicked.connect(self.start_predict)
         self.stop_button.clicked.connect(self.runner.stop)
         self.open_button.clicked.connect(self.open_output_folder)
@@ -133,8 +144,8 @@ class PredictPage(QWidget):
         self.update_preview()
 
     @staticmethod
-    def _ratio_spin(value: float) -> QDoubleSpinBox:
-        spin = QDoubleSpinBox()
+    def _ratio_spin(value: float) -> WheelSafeDoubleSpinBox:
+        spin = WheelSafeDoubleSpinBox()
         spin.setRange(0.0, 1.0)
         spin.setDecimals(2)
         spin.setSingleStep(0.05)
@@ -148,8 +159,9 @@ class PredictPage(QWidget):
         self.update_preview()
 
     def _source_type_changed(self, source_type: str) -> None:
-        self.source.directory = source_type == "Image folder"
-        if source_type == "Video file":
+        source_kind = self.source_type.currentData()
+        self.source.directory = source_kind == "image_folder"
+        if source_kind == "video":
             self.source.file_filter = "Videos (*.mp4 *.avi *.mov *.mkv *.wmv *.m4v);;All files (*.*)"
         else:
             self.source.file_filter = "Images (*.jpg *.jpeg *.png *.bmp *.webp);;All files (*.*)"
@@ -188,7 +200,7 @@ class PredictPage(QWidget):
             QMessageBox.warning(self, "Predict", "Select a valid .pt or .onnx model.")
             return
         source = Path(self.source.path())
-        expects_directory = self.source_type.currentText() == "Image folder"
+        expects_directory = self.source_type.currentData() == "image_folder"
         if (expects_directory and not source.is_dir()) or (not expects_directory and not source.is_file()):
             QMessageBox.warning(self, "Predict", "Select a valid source for the selected source type.")
             return

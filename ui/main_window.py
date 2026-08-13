@@ -4,6 +4,7 @@ from PySide6.QtCore import QSize
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow, QStackedWidget, QVBoxLayout, QWidget
 
 from core.config_manager import ConfigManager
+from core.i18n_manager import get_i18n, tr
 from core.runtime_manager import RuntimeManager
 from core.version import APP_NAME, APP_VERSION
 from ui.dataset_page import DatasetPage
@@ -25,6 +26,8 @@ class MainWindow(QMainWindow):
         self.resize(1280, 820)
         self.setMinimumSize(1050, 680)
         self.config = ConfigManager()
+        self.i18n = get_i18n()
+        self.i18n.set_language(str(self.config.get("language", "zh_TW")), emit=False)
 
         root = QWidget()
         self.setCentralWidget(root)
@@ -37,22 +40,22 @@ class MainWindow(QMainWindow):
         sidebar.setFixedWidth(218)
         side_layout = QVBoxLayout(sidebar)
         side_layout.setContentsMargins(16, 22, 16, 16)
-        brand = QLabel("YOLO\nTrainer UI")
-        brand.setObjectName("brand")
-        side_layout.addWidget(brand)
+        self.brand = QLabel("YOLO\nTrainer UI")
+        self.brand.setObjectName("brand")
+        side_layout.addWidget(self.brand)
         self.navigation = QListWidget()
         self.navigation.setObjectName("navigation")
-        labels = ["Train", "Dataset Check", "Dataset Builder", "Validate / Evaluate", "Predict / Test", "Error Mining", "Export", "Monitor / Results", "Runtime / Environment", "Settings"]
-        self.runtime_index = labels.index("Runtime / Environment")
-        self.settings_index = labels.index("Settings")
-        for label in labels:
-            item = QListWidgetItem(label)
+        self.navigation_keys = ["nav.train", "nav.dataset", "nav.builder", "nav.validate", "nav.predict", "nav.mining", "nav.export", "nav.monitor", "nav.runtime", "nav.settings"]
+        self.runtime_index = self.navigation_keys.index("nav.runtime")
+        self.settings_index = self.navigation_keys.index("nav.settings")
+        for key in self.navigation_keys:
+            item = QListWidgetItem(tr(key))
             item.setSizeHint(QSize(0, 46))
             self.navigation.addItem(item)
         side_layout.addWidget(self.navigation, 1)
-        version = QLabel(f"v{APP_VERSION} · Desktop console")
-        version.setObjectName("sidebarCaption")
-        side_layout.addWidget(version)
+        self.version_label = QLabel()
+        self.version_label.setObjectName("sidebarCaption")
+        side_layout.addWidget(self.version_label)
         outer.addWidget(sidebar)
 
         content = QWidget()
@@ -62,13 +65,13 @@ class MainWindow(QMainWindow):
         self.runtime_banner = QWidget()
         banner_layout = QHBoxLayout(self.runtime_banner)
         banner_layout.setContentsMargins(18, 9, 18, 9)
-        self.runtime_banner_label = QLabel("YOLO runtime is not configured. UI-only features remain available. Open Runtime / Environment to configure training and inference.")
+        self.runtime_banner_label = QLabel()
         self.runtime_banner_label.setWordWrap(True)
-        banner_button = QLabel('<a href="open">Open Runtime / Environment</a>')
-        banner_button.setOpenExternalLinks(False)
-        banner_button.linkActivated.connect(lambda _link: self._open_runtime())
+        self.banner_button = QLabel()
+        self.banner_button.setOpenExternalLinks(False)
+        self.banner_button.linkActivated.connect(lambda _link: self._open_runtime())
         banner_layout.addWidget(self.runtime_banner_label, 1)
-        banner_layout.addWidget(banner_button)
+        banner_layout.addWidget(self.banner_button)
         self.runtime_banner.setStyleSheet("background: #fef3c7; color: #92400e;")
         content_layout.addWidget(self.runtime_banner)
 
@@ -107,11 +110,23 @@ class MainWindow(QMainWindow):
         self.error_mining_page.hard_cases_exported.connect(self.dataset_builder_page.set_hard_cases)
         self.dataset_builder_page.use_dataset_requested.connect(self._use_built_dataset)
         self._refresh_runtime_banner()
+        self._retranslate_ui()
+        self.i18n.language_changed.connect(self._retranslate_ui)
+
+    def _retranslate_ui(self, _locale: str | None = None) -> None:
+        self.setWindowTitle(f"{APP_NAME} v{APP_VERSION}")
+        for index, key in enumerate(self.navigation_keys):
+            self.navigation.item(index).setText(tr(key))
+        self.version_label.setText(f"v{APP_VERSION} · {tr('app.desktop_console')}")
+        self.runtime_banner_label.setText(tr("main.runtime_missing"))
+        self.banner_button.setText(f'<a href="open">{tr("main.open_runtime")}</a>')
 
     def _open_runtime(self) -> None:
         self.navigation.setCurrentRow(self.runtime_index)
 
     def _settings_saved(self, _values: dict) -> None:
+        locale = str(_values.get("language", self.i18n.get_language()))
+        self.i18n.set_language(locale)
         self._refresh_runtime_banner()
 
     def _runtime_changed(self, values: dict) -> None:

@@ -6,6 +6,7 @@ from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication
 
 from core.version import APP_ID, APP_NAME
+from core.i18n_manager import get_i18n
 from ui.main_window import MainWindow
 
 
@@ -84,6 +85,8 @@ QLabel[state="warning"] { background: #fef3c7; color: #92400e; border-radius: 6p
 
 def main() -> int:
     app = QApplication(sys.argv)
+    # Initialise bundled translation resources before constructing UI widgets.
+    get_i18n()
     app.setApplicationName(APP_ID)
     app.setApplicationDisplayName(APP_NAME)
     app.setOrganizationName("")
