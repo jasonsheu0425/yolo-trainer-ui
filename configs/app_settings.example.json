@@ -1,5 +1,6 @@
 {
   "language": "zh_TW",
+  "ui_mode": "advanced",
   "yolo_command": "",
   "python_executable": "",
   "runs_folder": "runs/detect",

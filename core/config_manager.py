@@ -8,6 +8,7 @@ from typing import Any
 
 DEFAULT_SETTINGS: dict[str, Any] = {
     "language": "zh_TW",
+    "ui_mode": "advanced",
     "python_executable": "",
     "yolo_command": "",
     "runs_folder": "runs/detect",

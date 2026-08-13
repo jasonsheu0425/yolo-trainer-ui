@@ -207,6 +207,27 @@ class TrainPage(QWidget):
             self._update_run_summary(str(values["last_run_folder"]))
         self.update_preview()
 
+    def training_values(self) -> dict[str, object]:
+        """Expose the one authoritative training configuration to Simple Mode."""
+        return {
+            "model": self.model.currentText().strip(), "epochs": self.epochs.value(),
+            "imgsz": self.imgsz.value(), "batch": self.batch.value(),
+            "device": self.device.text().strip(), "patience": self.patience.value(),
+        }
+
+    def apply_simple_values(self, values: dict[str, object], dataset_path: str) -> None:
+        """Apply Simple Mode values without creating another command builder."""
+        if dataset_path:
+            self.dataset.set_path(dataset_path)
+        if "model" in values:
+            self.model.setCurrentText(str(values["model"]))
+        for name, widget in (("epochs", self.epochs), ("imgsz", self.imgsz), ("batch", self.batch), ("patience", self.patience)):
+            if name in values:
+                widget.setValue(int(values[name]))
+        if "device" in values:
+            self.device.setText(str(values["device"]))
+        self.update_preview()
+
     def apply_preset(self, _name: str) -> None:
         values = self.PRESETS.get(str(self.preset.currentData() or ""))
         if not values:

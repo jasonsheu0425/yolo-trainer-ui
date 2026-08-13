@@ -6,6 +6,12 @@ The default UI language is Traditional Chinese. Open **Language / 語言** in
 Settings to change to English without restarting; the preference is saved
 locally.
 
+## Simple Mode
+
+Use Quick Start for the guided workflow, or select Advanced Mode in Settings
+for the complete pages and parameters. Dataset Check is required before Simple
+Mode training can start.
+
 ## Pages
 
 - **Train:** configure training parameters, apply presets, start or stop training, and inspect the last run.

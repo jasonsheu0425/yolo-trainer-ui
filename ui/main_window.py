@@ -15,6 +15,7 @@ from ui.monitor_page import MonitorPage
 from ui.predict_page import PredictPage
 from ui.runtime_page import RuntimePage
 from ui.settings_page import SettingsPage
+from ui.simple_mode_page import SimpleModePage
 from ui.train_page import TrainPage
 from ui.validate_page import ValidatePage
 
@@ -77,6 +78,7 @@ class MainWindow(QMainWindow):
 
         self.stack = QStackedWidget()
         self.train_page = TrainPage(self.config)
+        self.simple_page = SimpleModePage(self.config, self.train_page)
         self.dataset_page = DatasetPage()
         self.dataset_builder_page = DatasetBuilderPage(self.config)
         self.validate_page = ValidatePage(self.config)
@@ -86,11 +88,11 @@ class MainWindow(QMainWindow):
         self.monitor_page = MonitorPage(self.config)
         self.runtime_page = RuntimePage(self.config)
         self.settings_page = SettingsPage(self.config)
-        for page in (self.train_page, self.dataset_page, self.dataset_builder_page, self.validate_page, self.predict_page, self.error_mining_page, self.export_page, self.monitor_page, self.runtime_page, self.settings_page):
+        for page in (self.simple_page, self.train_page, self.dataset_page, self.dataset_builder_page, self.validate_page, self.predict_page, self.error_mining_page, self.export_page, self.monitor_page, self.runtime_page, self.settings_page):
             self.stack.addWidget(page)
         content_layout.addWidget(self.stack, 1)
         outer.addWidget(content, 1)
-        self.navigation.currentRowChanged.connect(self.stack.setCurrentIndex)
+        self.navigation.currentRowChanged.connect(self._navigation_changed)
         self.navigation.setCurrentRow(0)
         self.settings_page.settings_saved.connect(self.train_page.apply_settings)
         self.settings_page.settings_saved.connect(self.export_page.apply_settings)
@@ -101,6 +103,9 @@ class MainWindow(QMainWindow):
         self.settings_page.settings_saved.connect(self.dataset_builder_page.apply_settings)
         self.settings_page.settings_saved.connect(self.runtime_page.apply_settings)
         self.settings_page.settings_saved.connect(self._settings_saved)
+        self.simple_page.advanced_requested.connect(lambda: self.set_ui_mode("advanced"))
+        self.simple_page.results_requested.connect(lambda: self._open_page("nav.monitor"))
+        self.simple_page.dataset_details_requested.connect(lambda: self._open_page("nav.dataset"))
         self.runtime_page.runtime_changed.connect(self._runtime_changed)
         self.runtime_page.open_settings_requested.connect(lambda: self.navigation.setCurrentRow(self.settings_index))
         for page in (self.train_page, self.predict_page, self.validate_page, self.export_page):
@@ -112,22 +117,54 @@ class MainWindow(QMainWindow):
         self._refresh_runtime_banner()
         self._retranslate_ui()
         self.i18n.language_changed.connect(self._retranslate_ui)
+        self.set_ui_mode(str(self.config.get("ui_mode", "advanced")), persist=False)
 
     def _retranslate_ui(self, _locale: str | None = None) -> None:
         self.setWindowTitle(f"{APP_NAME} v{APP_VERSION}")
-        for index, key in enumerate(self.navigation_keys):
-            self.navigation.item(index).setText(tr(key))
+        self._rebuild_navigation()
         self.version_label.setText(f"v{APP_VERSION} · {tr('app.desktop_console')}")
         self.runtime_banner_label.setText(tr("main.runtime_missing"))
         self.banner_button.setText(f'<a href="open">{tr("main.open_runtime")}</a>')
 
     def _open_runtime(self) -> None:
-        self.navigation.setCurrentRow(self.runtime_index)
+        self._open_page("nav.runtime")
 
     def _settings_saved(self, _values: dict) -> None:
         locale = str(_values.get("language", self.i18n.get_language()))
         self.i18n.set_language(locale)
+        if "ui_mode" in _values:
+            self.set_ui_mode(str(_values["ui_mode"]), persist=False)
         self._refresh_runtime_banner()
+
+    def set_ui_mode(self, mode: str, *, persist: bool = True) -> None:
+        self.ui_mode = mode if mode in {"simple", "advanced"} else "advanced"
+        if persist:
+            self.config.save({"ui_mode": self.ui_mode})
+        self.active_navigation_keys = (["nav.quick_start", "nav.train", "nav.monitor", "nav.runtime", "nav.settings"] if self.ui_mode == "simple" else self.navigation_keys)
+        self._rebuild_navigation()
+        self.simple_page.refresh_from_train()
+
+    def _navigation_changed(self, row: int) -> None:
+        keys = getattr(self, "active_navigation_keys", self.navigation_keys)
+        if 0 <= row < len(keys):
+            mapping = {"nav.quick_start": 0, "nav.train": 1, "nav.dataset": 2, "nav.builder": 3, "nav.validate": 4, "nav.predict": 5, "nav.mining": 6, "nav.export": 7, "nav.monitor": 8, "nav.runtime": 9, "nav.settings": 10}
+            self.stack.setCurrentIndex(mapping[keys[row]])
+
+    def _open_page(self, key: str) -> None:
+        if key in self.active_navigation_keys:
+            self.navigation.setCurrentRow(self.active_navigation_keys.index(key))
+
+    def _rebuild_navigation(self) -> None:
+        keys = getattr(self, "active_navigation_keys", self.navigation_keys)
+        self.navigation.blockSignals(True)
+        self.navigation.clear()
+        for key in keys:
+            item = QListWidgetItem(tr(key))
+            item.setSizeHint(QSize(0, 46))
+            self.navigation.addItem(item)
+        self.navigation.blockSignals(False)
+        if keys:
+            self.navigation.setCurrentRow(0)
 
     def _runtime_changed(self, values: dict) -> None:
         if "yolo_command" in values and "application_mode" not in values:

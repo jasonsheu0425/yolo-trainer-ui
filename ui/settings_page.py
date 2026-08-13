@@ -33,15 +33,19 @@ class SettingsPage(QWidget):
         self.language.addItem("繁體中文", "zh_TW")
         self.language.addItem("English", "en_US")
         self.language.currentIndexChanged.connect(self._language_changed)
-        self.labels = [QLabel() for _ in range(8)]
-        for label, widget in zip(self.labels, (self.language, self.python, self.yolo, self.runs, self.model, self.device)):
+        self.ui_mode = WheelSafeComboBox()
+        self.ui_mode.addItem("", "simple")
+        self.ui_mode.addItem("", "advanced")
+        self.ui_mode.currentIndexChanged.connect(self._mode_changed)
+        self.labels = [QLabel() for _ in range(9)]
+        for label, widget in zip(self.labels, (self.language, self.ui_mode, self.python, self.yolo, self.runs, self.model, self.device)):
             form.addRow(label, widget)
         self.managed_location = QLabel(str(self.runtime_manager.managed_runtime_folder()))
         self.managed_location.setWordWrap(True)
         self.runtime_status = QLabel("Not checked")
         self.runtime_status.setWordWrap(True)
-        form.addRow(self.labels[6], self.managed_location)
-        form.addRow(self.labels[7], self.runtime_status)
+        form.addRow(self.labels[7], self.managed_location)
+        form.addRow(self.labels[8], self.runtime_status)
         set_tooltip(self.python, "tooltip.runtime.python")
         set_tooltip(self.yolo, "tooltip.runtime.yolo")
         layout.addWidget(self.box)
@@ -69,11 +73,13 @@ class SettingsPage(QWidget):
 
     def _retranslate_ui(self, _locale: str | None = None) -> None:
         self.box.setTitle(tr("settings.application"))
-        for label, key in zip(self.labels, ("settings.language", "settings.python", "settings.yolo", "settings.runs", "settings.model", "settings.device", "settings.managed_location", "settings.runtime_status")):
+        for label, key in zip(self.labels, ("settings.language", "mode.label", "settings.python", "settings.yolo", "settings.runs", "settings.model", "settings.device", "settings.managed_location", "settings.runtime_status")):
             label.setText(tr(key))
         for index in range(self.language.count()):
             locale = str(self.language.itemData(index))
             self.language.setItemText(index, tr(f"language.{locale}"))
+        for index in range(self.ui_mode.count()):
+            self.ui_mode.setItemText(index, tr(f"mode.{self.ui_mode.itemData(index)}"))
         self.save_button.setText(tr("settings.save"))
         self.reload_button.setText(tr("settings.reload"))
         self.reset_button.setText(tr("settings.reset"))
@@ -88,6 +94,9 @@ class SettingsPage(QWidget):
         self.language.blockSignals(True)
         self.language.setCurrentIndex(max(0, self.language.findData(str(values.get("language", "zh_TW")))))
         self.language.blockSignals(False)
+        self.ui_mode.blockSignals(True)
+        self.ui_mode.setCurrentIndex(max(0, self.ui_mode.findData(str(values.get("ui_mode", "advanced")))))
+        self.ui_mode.blockSignals(False)
         self._update_runtime_status()
 
     def _language_changed(self) -> None:
@@ -96,9 +105,15 @@ class SettingsPage(QWidget):
         self.i18n.set_language(locale)
         self.settings_saved.emit({"language": locale})
 
+    def _mode_changed(self) -> None:
+        mode = str(self.ui_mode.currentData())
+        self.config.save({"ui_mode": mode})
+        self.settings_saved.emit({"ui_mode": mode})
+
     def save(self) -> None:
         values = {
             "language": str(self.language.currentData()),
+            "ui_mode": str(self.ui_mode.currentData()),
             "python_executable": self.python.path(),
             "yolo_command": self.yolo.path(),
             "runs_folder": self.runs.path() or "runs/detect",

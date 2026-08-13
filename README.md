@@ -9,6 +9,11 @@ Use **Language / 語言** on the Settings page to switch immediately. See
 [localization documentation](docs/localization.md) for translation resources
 and contributor guidance.
 
+## Simple Mode
+
+Simple Mode offers a guided Dataset Check → profile selection → training flow
+while Advanced Mode retains all YOLO controls. See [Simple Mode](docs/simple_mode.md).
+
 YOLO Trainer UI is a Windows desktop application built with Python and PySide6 for Ultralytics YOLO dataset checking, training, validation, prediction, error mining, hard-case review, and dataset version building.
 
 Long-running YOLO commands use `QProcess`, while Dataset Builder uses a `QThread` worker so the interface remains responsive.

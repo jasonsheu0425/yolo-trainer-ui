@@ -2,6 +2,7 @@
 
 The application starts in Traditional Chinese by default. You can change the
 interface language from **Language / 語言** in Settings after startup.
+Settings also stores the selected Simple or Advanced interface mode.
 
 ## Source code
 
