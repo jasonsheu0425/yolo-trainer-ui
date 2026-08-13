@@ -17,6 +17,8 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "default_model": "yolov8n.pt",
     "default_device": "0",
     "last_run_folder": "",
+    "last_annotation_dataset": "",
+    "annotation_autosave": True,
 }
 
 

@@ -23,14 +23,14 @@ def test_mode_switch_persistence_and_profile_mapping(tmp_path):
     # Replace only the test window's config path; no user setting is written.
     window.config = settings
     window.set_ui_mode("simple")
-    assert window.navigation.count() == 5
+    assert window.navigation.count() == 6
     window.simple_page.model_profile.setCurrentIndex(window.simple_page.model_profile.findData("balanced"))
     window.simple_page.training_profile.setCurrentIndex(window.simple_page.training_profile.findData("standard"))
     window.simple_page._profiles_selected()
     values = window.train_page.training_values()
     assert (values["model"], values["epochs"], values["imgsz"], values["batch"]) == ("yolov8s.pt", 100, 640, 16)
     window.set_ui_mode("advanced")
-    assert window.navigation.count() == 11
+    assert window.navigation.count() == 12
     assert window.train_page.epochs.value() == 100
     window.close()
 

@@ -12,6 +12,37 @@ MAX_IMAGES_PER_SPLIT = 500
 LOW_INSTANCE_WARNING = 20
 
 
+def load_dataset_manifest(yaml_path: str | Path) -> tuple[dict[str, Any], list[str]]:
+    """Resolve classes and available splits with Dataset Check-compatible rules."""
+    path = Path(yaml_path).expanduser().resolve()
+    errors: list[str] = []
+    warnings: list[str] = []
+    if not path.is_file():
+        return {}, [f"Dataset YAML not found: {path}"]
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeError, yaml.YAMLError) as exc:
+        return {}, [f"Unable to read dataset YAML: {exc}"]
+    if not isinstance(data, dict):
+        return {}, ["Dataset YAML root must be a mapping."]
+    names = _normalize_names(data.get("names"), errors)
+    if not names:
+        return {}, errors or ["Dataset YAML has no usable classes."]
+    root = _resolve_root(path.parent, data.get("path"))
+    splits: dict[str, list[Path]] = {}
+    for split in ("train", "val", "test"):
+        if split in data and data[split] not in (None, ""):
+            split_errors: list[str] = []
+            images = _resolve_images(root, data[split], split_errors, warnings, split)
+            if split_errors:
+                errors.extend(split_errors)
+            elif images:
+                splits[split] = images
+    if not splits:
+        errors.append("Dataset has no readable image split.")
+    return {"yaml": path, "root": root, "names": names, "splits": splits, "warnings": warnings}, errors
+
+
 def check_dataset(yaml_path: str | Path) -> dict[str, Any]:
     result: dict[str, Any] = {"errors": [], "warnings": [], "summary": {}, "class_counts": {}}
     path = Path(yaml_path).expanduser().resolve()

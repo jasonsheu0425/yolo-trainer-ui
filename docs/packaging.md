@@ -11,3 +11,8 @@ The frozen build must include `core/training_result_analyzer.py`,
 `ui/training_analysis_page.py`, and both `i18n` JSON files. Verify that the
 portable app builds the Training Analysis page and can open a run independently
 of the source repository.
+
+For v0.12, also verify that `ui.annotation`, `services.annotation_service`,
+`domain.annotation`, `persistence.yolo_annotation_store`, and Qt image format
+plugins are present. The frozen smoke must construct the Annotation page and
+load a temporary YOLO dataset without importing anything from the source tree.

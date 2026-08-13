@@ -37,3 +37,10 @@ def test_no_hardcoded_developer_paths_in_production_python():
         for path in (ROOT / directory).glob("*.py"):
             source = path.read_text(encoding="utf-8").lower()
             assert "e:\\yolo_trainer_ui" not in source and "c:\\users\\jason" not in source, path
+
+
+def test_annotation_canvas_never_writes_label_text():
+    for path in (ROOT / "ui" / "annotation").glob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        assert "write_text(" not in source
+        assert "open(" not in source

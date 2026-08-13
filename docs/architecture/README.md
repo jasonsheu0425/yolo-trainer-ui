@@ -23,9 +23,25 @@ flowchart TD
 - **Runners/workers** perform asynchronous process or QThread work.
 
 `RuntimeManager` remains the owner of runtime discovery. No page should know
-managed-runtime filesystem layout. Future v0.12 Annotation Editor should add
-an Annotation domain model, AnnotationService, and Annotation UI; model
-inference belongs behind an asynchronous worker rather than in widgets.
+managed-runtime filesystem layout.
+
+The v0.12 annotation path follows the same boundary rules:
+
+```mermaid
+flowchart TD
+    AnnotationUI[Annotation UI and QGraphics canvas] --> AnnotationService
+    AnnotationService --> AnnotationDomain[Normalized annotation domain]
+    AnnotationService --> YoloStore[YoloAnnotationStore]
+    YoloStore --> AtomicWriter[Atomic label writer]
+```
+
+The canvas only reports pixel-space user intent. `AnnotationService` owns the
+current-image session, mutations, dirty state, and undo/redo snapshots. Domain
+conversion functions are the sole normalized/pixel geometry path, while
+`YoloAnnotationStore` owns label path resolution, parsing, validation, atomic
+save, and repair backups. A future v0.13 inference worker can enter at the
+service boundary; inference and model-generated metadata are intentionally not
+implemented in v0.12 widgets or persistence.
 
 Architecture principles: UI displays state and expresses intent; services
 coordinate workflows; core algorithms do not import UI; persistence owns

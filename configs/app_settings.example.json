@@ -8,5 +8,7 @@
   "default_device": "0",
   "last_run_folder": "",
   "last_dataset_yaml": "",
-  "last_model_path": ""
+  "last_model_path": "",
+  "last_annotation_dataset": "",
+  "annotation_autosave": true
 }

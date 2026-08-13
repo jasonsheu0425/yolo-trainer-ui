@@ -17,7 +17,7 @@ while Advanced Mode retains all YOLO controls. See [Simple Mode](docs/simple_mod
 v0.10.1 is a prerelease stabilization build for the Simple Mode portable
 workflow; see [packaging](docs/packaging.md) and the [release checklist](docs/release_checklist.md).
 
-YOLO Trainer UI is a Windows desktop application built with Python and PySide6 for Ultralytics YOLO dataset checking, training, validation, prediction, error mining, hard-case review, and dataset version building.
+YOLO Trainer UI is a Windows desktop application built with Python and PySide6 for Ultralytics YOLO detection annotation, dataset checking, training, validation, prediction, error mining, hard-case review, and dataset version building.
 
 Long-running YOLO commands use `QProcess`, while Dataset Builder uses a `QThread` worker so the interface remains responsive.
 
@@ -33,6 +33,7 @@ Long-running YOLO commands use `QProcess`, while Dataset Builder uses a `QThread
 - **Error Mining:** compares predictions with ground truth using IoU-based hard-case classification.
 - **Report Viewer:** filters hard-case reports, previews images, and opens prediction or ground-truth labels.
 - **Dataset Builder:** builds a new dataset version from a base dataset and selected hard cases without changing the source dataset.
+- **Annotation Editor (Alpha):** creates and edits YOLO detection bounding boxes with autosave, undo/redo, zoom, pan, and Traditional Chinese/English UI.
 - **Runtime / Environment:** discovers Python and YOLO, diagnoses Ultralytics, PyTorch, CUDA, and GPU support, and can create a per-user managed runtime.
 
 ## Screenshots
@@ -95,6 +96,12 @@ Each non-empty detection label row uses:
 class_id x_center y_center width height
 ```
 
+## Annotation Editor (Public Alpha)
+
+Open **Annotation Editor**, choose the dataset `data.yaml`, then choose an available train, validation, or test split. Select a class and drag on the image in **Draw Box** mode. **Select** mode moves boxes and exposes four corner resize handles; Delete, copy/paste, undo/redo, Fit Image, 100%, mouse-wheel zoom, and middle-mouse pan are supported.
+
+Labels are saved as six-decimal YOLO normalized detection coordinates. Autosave only writes a label after an edit: merely viewing an unlabeled image never creates an empty `.txt`. Deleting the final box and saving intentionally creates an empty negative label. Malformed labels are not silently overwritten; explicit repair first preserves the original under the per-user annotation backup folder. See [Annotation Editor](docs/annotation_editor.md).
+
 ## Recommended workflow
 
 ```text
@@ -126,13 +133,13 @@ The portable app contains its UI runtime, while YOLO is resolved separately from
 
 ## Development status
 
-Current version: **v0.11.1 Architecture Hardening** (`0.11.1`).
+Current version: **v0.12.0 Annotation Editor MVP** (`0.12.0`, Public Alpha).
 
-### v0.11.1 Architecture Hardening
+### v0.12.0 Annotation Editor MVP
 
-This release focuses on internal modularization, service boundaries,
-testability, and preparation for the upcoming Annotation Editor. Existing
-workflows, settings, and run/report formats remain compatible.
+This prerelease adds an integrated editor for YOLO object-detection bounding
+boxes on top of the v0.11.1 service architecture. Segmentation, pose, OBB,
+tracking, video annotation, and AI-assisted annotation remain out of scope.
 
 Development dependencies are listed in `requirements-dev.txt`. Before publishing a release, follow the [Release Checklist](docs/release_checklist.md).
 
@@ -144,6 +151,7 @@ Development dependencies are listed in `requirements-dev.txt`. Before publishing
 - [Packaging](docs/packaging.md)
 - [Runtime setup](docs/runtime_setup.md)
 - [Training analysis](docs/training_analysis.md)
+- [Annotation Editor](docs/annotation_editor.md)
 - [Release checklist](docs/release_checklist.md)
 - [Release notes template](docs/release_notes_template.md)
 

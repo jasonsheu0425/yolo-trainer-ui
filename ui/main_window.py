@@ -11,6 +11,7 @@ from core.config_manager import ConfigManager
 from core.i18n_manager import get_i18n, tr
 from core.version import APP_NAME, APP_VERSION
 from ui.dataset_page import DatasetPage
+from ui.annotation.annotation_page import AnnotationPage
 from ui.dataset_builder_page import DatasetBuilderPage
 from ui.error_mining_page import ErrorMiningPage
 from ui.export_page import ExportPage
@@ -51,7 +52,7 @@ class MainWindow(QMainWindow):
         side_layout.addWidget(self.brand)
         self.navigation = QListWidget()
         self.navigation.setObjectName("navigation")
-        self.navigation_keys = ["nav.train", "nav.dataset", "nav.builder", "nav.validate", "nav.predict", "nav.mining", "nav.export", "nav.monitor", "nav.analysis", "nav.runtime", "nav.settings"]
+        self.navigation_keys = ["nav.train", "nav.dataset", "nav.builder", "nav.validate", "nav.predict", "nav.mining", "nav.export", "nav.monitor", "nav.analysis", "nav.annotation", "nav.runtime", "nav.settings"]
         self.runtime_index = self.navigation_keys.index("nav.runtime")
         self.settings_index = self.navigation_keys.index("nav.settings")
         for key in self.navigation_keys:
@@ -84,6 +85,7 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
         self.train_page = TrainPage(self.config, self.services.training)
         self.analysis_page = TrainingAnalysisPage(self.services.analysis)
+        self.annotation_page = AnnotationPage(self.config, self.services.annotation)
         self.simple_page = SimpleModePage(self.config, self.train_page)
         self.dataset_page = DatasetPage()
         self.dataset_builder_page = DatasetBuilderPage(self.config)
@@ -94,7 +96,7 @@ class MainWindow(QMainWindow):
         self.monitor_page = MonitorPage(self.config)
         self.runtime_page = RuntimePage(self.config)
         self.settings_page = SettingsPage(self.config)
-        for page in (self.simple_page, self.train_page, self.dataset_page, self.dataset_builder_page, self.validate_page, self.predict_page, self.error_mining_page, self.export_page, self.monitor_page, self.analysis_page, self.runtime_page, self.settings_page):
+        for page in (self.simple_page, self.train_page, self.dataset_page, self.dataset_builder_page, self.validate_page, self.predict_page, self.error_mining_page, self.export_page, self.monitor_page, self.analysis_page, self.annotation_page, self.runtime_page, self.settings_page):
             self.stack.addWidget(page)
         content_layout.addWidget(self.stack, 1)
         outer.addWidget(content, 1)
@@ -166,14 +168,14 @@ class MainWindow(QMainWindow):
         self.ui_mode = mode if mode in {"simple", "advanced"} else "advanced"
         if persist:
             self.config.save({"ui_mode": self.ui_mode})
-        self.active_navigation_keys = (["nav.quick_start", "nav.train", "nav.analysis", "nav.runtime", "nav.settings"] if self.ui_mode == "simple" else self.navigation_keys)
+        self.active_navigation_keys = (["nav.quick_start", "nav.train", "nav.analysis", "nav.annotation", "nav.runtime", "nav.settings"] if self.ui_mode == "simple" else self.navigation_keys)
         self._rebuild_navigation()
         self.simple_page.refresh_from_train()
 
     def _navigation_changed(self, row: int) -> None:
         keys = getattr(self, "active_navigation_keys", self.navigation_keys)
         if 0 <= row < len(keys):
-            mapping = {"nav.quick_start": 0, "nav.train": 1, "nav.dataset": 2, "nav.builder": 3, "nav.validate": 4, "nav.predict": 5, "nav.mining": 6, "nav.export": 7, "nav.monitor": 8, "nav.analysis": 9, "nav.runtime": 10, "nav.settings": 11}
+            mapping = {"nav.quick_start": 0, "nav.train": 1, "nav.dataset": 2, "nav.builder": 3, "nav.validate": 4, "nav.predict": 5, "nav.mining": 6, "nav.export": 7, "nav.monitor": 8, "nav.analysis": 9, "nav.annotation": 10, "nav.runtime": 11, "nav.settings": 12}
             self.stack.setCurrentIndex(mapping[keys[row]])
 
     def _open_page(self, key: str) -> None:
@@ -215,6 +217,9 @@ class MainWindow(QMainWindow):
         self._open_page("nav.train")
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
+        if not self.annotation_page.confirm_close():
+            event.ignore()
+            return
         self.dataset_builder_page.shutdown()
         self.runtime_page.shutdown()
         if self.train_page.runner.running:
