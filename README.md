@@ -14,6 +14,9 @@ and contributor guidance.
 Simple Mode offers a guided Dataset Check → profile selection → training flow
 while Advanced Mode retains all YOLO controls. See [Simple Mode](docs/simple_mode.md).
 
+v0.10.1 is a prerelease stabilization build for the Simple Mode portable
+workflow; see [packaging](docs/packaging.md) and the [release checklist](docs/release_checklist.md).
+
 YOLO Trainer UI is a Windows desktop application built with Python and PySide6 for Ultralytics YOLO dataset checking, training, validation, prediction, error mining, hard-case review, and dataset version building.
 
 Long-running YOLO commands use `QProcess`, while Dataset Builder uses a `QThread` worker so the interface remains responsive.
