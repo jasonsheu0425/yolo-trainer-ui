@@ -19,6 +19,9 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "last_run_folder": "",
     "last_annotation_dataset": "",
     "annotation_autosave": True,
+    "last_annotation_model": "",
+    "annotation_confidence": 0.25,
+    "annotation_device": "auto",
 }
 
 

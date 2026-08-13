@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QObject, QPointF, QRectF, Signal
-from PySide6.QtGui import QBrush, QColor, QPen
+from PySide6.QtGui import QBrush, QColor, QFont, QPen
 from PySide6.QtWidgets import QGraphicsItem, QGraphicsRectItem, QStyleOptionGraphicsItem, QWidget
 
 
@@ -14,11 +14,19 @@ class BoundingBoxItem(QObject, QGraphicsRectItem):
     geometry_committed = Signal(int, object)
     selected_box = Signal(int)
 
-    def __init__(self, index: int, rect: QRectF, color: QColor, scene_bounds: QRectF) -> None:
+    def __init__(
+        self,
+        index: int,
+        rect: QRectF,
+        color: QColor,
+        scene_bounds: QRectF,
+        label: str = "",
+    ) -> None:
         QObject.__init__(self)
         QGraphicsRectItem.__init__(self, QRectF(0, 0, rect.width(), rect.height()))
         self.index = index
         self.scene_bounds = scene_bounds
+        self.label = label
         self.setPos(rect.topLeft())
         self.setPen(QPen(color, 2.0))
         self.setBrush(QBrush(QColor(color.red(), color.green(), color.blue(), 25)))
@@ -86,6 +94,14 @@ class BoundingBoxItem(QObject, QGraphicsRectItem):
 
     def paint(self, painter, option: QStyleOptionGraphicsItem, widget: QWidget | None = None) -> None:  # type: ignore[override]
         super().paint(painter, option, widget)
+        if self.label:
+            painter.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+            metrics = painter.fontMetrics()
+            text_rect = QRectF(metrics.boundingRect(self.label)).adjusted(-4, -2, 4, 2)
+            text_rect.moveBottomLeft(self.rect().topLeft())
+            painter.fillRect(text_rect, QColor(17, 24, 39, 220))
+            painter.setPen(QColor("white"))
+            painter.drawText(text_rect, self.label)
         if self.isSelected():
             painter.setBrush(QBrush(QColor("white")))
             painter.setPen(QPen(QColor("#111827"), 1))

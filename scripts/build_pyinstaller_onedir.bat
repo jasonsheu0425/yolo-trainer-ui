@@ -16,6 +16,8 @@ set "PYTHON=.venv\Scripts\python.exe"
   --add-data "docs;docs" ^
   --add-data "assets;assets" ^
   --add-data "i18n;i18n" ^
+  --add-data "runtime_workers\annotation_inference_worker.py;runtime_workers" ^
+  --add-data "runtime_workers\annotation_inference_protocol.py;runtime_workers" ^
   --collect-data matplotlib ^
   --hidden-import yaml ^
   --hidden-import psutil ^

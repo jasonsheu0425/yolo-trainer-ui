@@ -34,6 +34,7 @@ Long-running YOLO commands use `QProcess`, while Dataset Builder uses a `QThread
 - **Report Viewer:** filters hard-case reports, previews images, and opens prediction or ground-truth labels.
 - **Dataset Builder:** builds a new dataset version from a base dataset and selected hard cases without changing the source dataset.
 - **Annotation Editor (Alpha):** creates and edits YOLO detection bounding boxes with autosave, undo/redo, zoom, pan, and Traditional Chinese/English UI.
+- **Model-Assisted Annotation (Beta):** keeps a trusted local YOLO Detection `.pt` model loaded in an external runtime worker, predicts the current image, or safely initializes labels for an unlabeled split.
 - **Runtime / Environment:** discovers Python and YOLO, diagnoses Ultralytics, PyTorch, CUDA, and GPU support, and can create a per-user managed runtime.
 
 ## Screenshots
@@ -102,6 +103,12 @@ Open **Annotation Editor**, choose the dataset `data.yaml`, then choose an avail
 
 Labels are saved as six-decimal YOLO normalized detection coordinates. Autosave only writes a label after an edit: merely viewing an unlabeled image never creates an empty `.txt`. Deleting the final box and saving intentionally creates an empty negative label. Malformed labels are not silently overwritten; explicit repair first preserves the original under the per-user annotation backup folder. See [Annotation Editor](docs/annotation_editor.md).
 
+## Model-Assisted Annotation (Public Beta)
+
+Choose a trusted local YOLO Detection `.pt` model in the Annotation Editor and select **Load Model**. A persistent JSONL worker runs through the configured or managed YOLO Runtime, so Ultralytics/PyTorch never enters the GUI inference path and the model stays loaded across images. **Predict Current Image** adds editable proposals without saving them; confidence disappears after a prediction is manually edited. **Auto Annotate Current Split** sequentially writes only detections for images with no existing label.
+
+Inference is local and no image is uploaded. Existing labels—including empty negative labels—are never overwritten by batch annotation, and no-detection results do not create empty labels. Provenance and confidence metadata are stored separately under LocalAppData; YOLO `.txt` remains unchanged. CPU inference is supported but can be much slower. See [Model-Assisted Annotation](docs/model_assisted_annotation.md).
+
 ## Recommended workflow
 
 ```text
@@ -133,13 +140,14 @@ The portable app contains its UI runtime, while YOLO is resolved separately from
 
 ## Development status
 
-Current version: **v0.12.0 Annotation Editor MVP** (`0.12.0`, Public Alpha).
+Current version: **v0.13.0 Model-Assisted Annotation** (`0.13.0`, Public Beta).
 
-### v0.12.0 Annotation Editor MVP
+### v0.13.0 Model-Assisted Annotation
 
-This prerelease adds an integrated editor for YOLO object-detection bounding
-boxes on top of the v0.11.1 service architecture. Segmentation, pose, OBB,
-tracking, video annotation, and AI-assisted annotation remain out of scope.
+This prerelease adds local, persistent-runtime model proposals and safe split
+auto-annotation to the v0.12 manual editor. It supports trusted local YOLO
+Detection `.pt` files only; ONNX, segmentation, pose, OBB, tracking, video,
+review queues, and active learning remain out of scope.
 
 Development dependencies are listed in `requirements-dev.txt`. Before publishing a release, follow the [Release Checklist](docs/release_checklist.md).
 
@@ -152,6 +160,7 @@ Development dependencies are listed in `requirements-dev.txt`. Before publishing
 - [Runtime setup](docs/runtime_setup.md)
 - [Training analysis](docs/training_analysis.md)
 - [Annotation Editor](docs/annotation_editor.md)
+- [Model-Assisted Annotation](docs/model_assisted_annotation.md)
 - [Release checklist](docs/release_checklist.md)
 - [Release notes template](docs/release_notes_template.md)
 

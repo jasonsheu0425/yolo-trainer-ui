@@ -3,13 +3,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QAction, QColor, QKeySequence
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QApplication,
     QCheckBox,
     QComboBox,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -18,6 +19,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QProgressBar,
     QSplitter,
     QTextEdit,
     QToolBar,
@@ -27,10 +29,30 @@ from PySide6.QtWidgets import (
 
 from core.config_manager import ConfigManager
 from core.i18n_manager import get_i18n, tr
-from domain.annotation import AnnotationStatus, BoundingBox, PixelBox, xyxy_to_yolo
+from core.runtime_manager import RuntimeManager
+from domain.annotation import (
+    AnnotationSource,
+    AnnotationStatus,
+    BoundingBox,
+    ModelPrediction,
+    PixelBox,
+    xyxy_to_yolo,
+)
+from services.annotation_inference_service import (
+    AnnotationInferenceService,
+    InferenceState,
+)
 from services.annotation_service import AnnotationService
 from ui.annotation.annotation_canvas import AnnotationCanvas
-from ui.widgets import PageHeader, PathPicker, WheelSafeComboBox, bind_text, set_tooltip
+from ui.widgets import (
+    PageHeader,
+    PathPicker,
+    WheelSafeComboBox,
+    WheelSafeDoubleSpinBox,
+    bind_combo_items,
+    bind_text,
+    set_tooltip,
+)
 
 
 STATUS_SYMBOLS = {
@@ -50,15 +72,21 @@ TEXT_INPUT_TYPES = (QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QAbstractSp
 class AnnotationPage(QWidget):
     """Presentation for AnnotationService; never parses or writes YOLO labels."""
 
+    runtime_requested = Signal()
+
     def __init__(
         self,
         config: ConfigManager,
         service: AnnotationService,
+        inference: AnnotationInferenceService | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.config = config
         self.service = service
+        self.inference = inference or AnnotationInferenceService(
+            RuntimeManager(config), service
+        )
         self.clipboard_box: BoundingBox | None = None
         self.active_class_id = 0
         self._rendering = False
@@ -67,14 +95,112 @@ class AnnotationPage(QWidget):
         outer.setContentsMargins(24, 20, 24, 20)
         outer.addWidget(PageHeader("annotation.title", "annotation.description"))
         self._build_dataset_row(outer)
+        self._build_model_assistance(outer)
         self._build_toolbar(outer)
         self._build_editor(outer)
         self._build_footer(outer)
         self._install_shortcuts()
+        self._connect_inference()
 
         get_i18n().language_changed.connect(self._retranslate)
         self._retranslate()
         self._render_empty()
+
+    def _build_model_assistance(self, outer: QVBoxLayout) -> None:
+        self.assistance_group = QGroupBox()
+        bind_text(self.assistance_group, "annotation.ai.title")
+        layout = QVBoxLayout(self.assistance_group)
+        model_row = QHBoxLayout()
+        self.model_picker = PathPicker("", "YOLO Detection Model (*.pt)")
+        bind_text(self.model_picker.label, "annotation.ai.model")
+        self.model_picker.set_path(str(self.config.get("last_annotation_model", "")))
+        set_tooltip(self.model_picker, "annotation.ai.tooltip.model")
+        self.device_combo = WheelSafeComboBox()
+        bind_combo_items(
+            self.device_combo,
+            [
+                ("annotation.ai.device.auto", "auto"),
+                ("annotation.ai.device.gpu0", "0"),
+                ("annotation.ai.device.cpu", "cpu"),
+            ],
+        )
+        selected_device = str(self.config.get("annotation_device", "auto"))
+        self.device_combo.setCurrentIndex(
+            max(self.device_combo.findData(selected_device), 0)
+        )
+        set_tooltip(self.device_combo, "annotation.ai.tooltip.device")
+        self.device_label = QLabel()
+        bind_text(self.device_label, "annotation.ai.device")
+        self.confidence = WheelSafeDoubleSpinBox()
+        self.confidence.setRange(0.01, 1.0)
+        self.confidence.setSingleStep(0.05)
+        self.confidence.setDecimals(2)
+        self.confidence.setValue(float(self.config.get("annotation_confidence", 0.25)))
+        set_tooltip(self.confidence, "annotation.ai.tooltip.confidence")
+        self.confidence_label = QLabel()
+        bind_text(self.confidence_label, "annotation.ai.confidence")
+        self.load_model_button = QPushButton()
+        bind_text(self.load_model_button, "annotation.ai.load")
+        self.load_model_button.clicked.connect(lambda: self.load_model())
+        model_row.addWidget(self.model_picker, 1)
+        model_row.addWidget(self.device_label)
+        model_row.addWidget(self.device_combo)
+        model_row.addWidget(self.confidence_label)
+        model_row.addWidget(self.confidence)
+        model_row.addWidget(self.load_model_button)
+        layout.addLayout(model_row)
+
+        action_row = QHBoxLayout()
+        self.inference_status = QLabel()
+        self.inference_status.setWordWrap(True)
+        self.predict_button = QPushButton()
+        self.auto_annotate_button = QPushButton()
+        self.cancel_inference_button = QPushButton()
+        self.override_button = QPushButton()
+        self.runtime_button = QPushButton()
+        bind_text(self.predict_button, "annotation.ai.predict")
+        bind_text(self.auto_annotate_button, "annotation.ai.auto_split")
+        bind_text(self.cancel_inference_button, "annotation.ai.cancel")
+        bind_text(self.override_button, "annotation.ai.override")
+        bind_text(self.runtime_button, "annotation.ai.runtime")
+        self.predict_button.clicked.connect(lambda: self.predict_current())
+        self.auto_annotate_button.clicked.connect(lambda: self.confirm_auto_annotate())
+        self.cancel_inference_button.clicked.connect(lambda: self.inference.cancel_batch())
+        self.override_button.clicked.connect(lambda: self._override_mismatch())
+        self.runtime_button.clicked.connect(self.runtime_requested.emit)
+        set_tooltip(self.predict_button, "annotation.ai.tooltip.predict")
+        set_tooltip(self.auto_annotate_button, "annotation.ai.tooltip.auto_split")
+        for widget in (
+            self.predict_button,
+            self.auto_annotate_button,
+            self.cancel_inference_button,
+            self.override_button,
+            self.runtime_button,
+        ):
+            action_row.addWidget(widget)
+        action_row.addStretch()
+        action_row.addWidget(self.inference_status, 1)
+        layout.addLayout(action_row)
+        self.batch_progress = QProgressBar()
+        self.batch_progress.setRange(0, 100)
+        self.batch_progress.setVisible(False)
+        layout.addWidget(self.batch_progress)
+        self.inference_log = QPlainTextEdit()
+        self.inference_log.setReadOnly(True)
+        self.inference_log.setMaximumHeight(90)
+        self.inference_log.setVisible(False)
+        layout.addWidget(self.inference_log)
+        outer.addWidget(self.assistance_group)
+
+    def _connect_inference(self) -> None:
+        self.inference.state_changed.connect(self._inference_state_changed)
+        self.inference.model_loaded.connect(self._model_loaded)
+        self.inference.prediction_ready.connect(self._prediction_ready)
+        self.inference.error.connect(self._inference_error)
+        self.inference.log.connect(self._append_inference_log)
+        self.inference.batch_progress.connect(self._batch_progressed)
+        self.inference.batch_finished.connect(self._batch_finished)
+        self._inference_state_changed(self.inference.state.value)
 
     def _build_dataset_row(self, outer: QVBoxLayout) -> None:
         row = QHBoxLayout()
@@ -182,6 +308,11 @@ class AnnotationPage(QWidget):
         outer.addLayout(row)
 
     def open_dataset(self) -> None:
+        if self._inference_busy():
+            QMessageBox.warning(
+                self, tr("common.warning"), tr("annotation.ai.busy_dataset")
+            )
+            return
         if not self._resolve_dirty():
             return
         try:
@@ -204,6 +335,232 @@ class AnnotationPage(QWidget):
         self._populate_images()
         self.image_list.setCurrentRow(self.service.index)
         self._render_document()
+        self.inference.refresh_class_compatibility()
+
+    def load_model(self) -> None:
+        model = self.model_picker.path()
+        device = str(self.device_combo.currentData())
+        self.config.save(
+            {
+                "last_annotation_model": model,
+                "annotation_device": device,
+                "annotation_confidence": self.confidence.value(),
+            }
+        )
+        self.inference.load_model(model, device)
+
+    def predict_current(self) -> None:
+        self.config.save({"annotation_confidence": self.confidence.value()})
+        self.inference.predict_current(self.confidence.value())
+
+    def _prediction_ready(
+        self, predictions: list[ModelPrediction], _image: str
+    ) -> None:
+        if not predictions:
+            self.inference_status.setText(tr("annotation.ai.no_detections"))
+            self._inference_state_changed(self.inference.state.value)
+            return
+        document = self.service.document
+        if document is None:
+            return
+        if not document.boxes:
+            self._apply_prediction_choice(predictions, "add")
+            return
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle(tr("annotation.ai.existing_title"))
+        dialog.setText(tr("annotation.ai.existing_message"))
+        add_button = dialog.addButton(
+            tr("annotation.ai.add"), QMessageBox.ButtonRole.AcceptRole
+        )
+        replace_button = dialog.addButton(
+            tr("annotation.ai.replace"), QMessageBox.ButtonRole.DestructiveRole
+        )
+        dialog.addButton(QMessageBox.StandardButton.Cancel)
+        dialog.exec()
+        if dialog.clickedButton() is add_button:
+            self._apply_prediction_choice(predictions, "add")
+        elif dialog.clickedButton() is replace_button:
+            self._apply_prediction_choice(predictions, "replace")
+
+    def _apply_prediction_choice(
+        self, predictions: list[ModelPrediction], mode: str
+    ) -> None:
+        try:
+            self.service.apply_predictions(predictions, replace=mode == "replace")
+        except ValueError as exc:
+            QMessageBox.warning(self, tr("common.warning"), str(exc))
+            return
+        self._render_document(select=self.service.selected_index)
+        self.inference_status.setText(
+            tr("annotation.ai.predictions_added", count=len(predictions))
+        )
+
+    def confirm_auto_annotate(self) -> None:
+        if self.service.document and self.service.document.dirty:
+            QMessageBox.warning(
+                self, tr("common.warning"), tr("annotation.ai.save_before_batch")
+            )
+            return
+        plan = self.inference.batch_plan()
+        summary = tr(
+            "annotation.ai.confirm_batch",
+            model=self.model_picker.path(),
+            split=self.service.split,
+            confidence=f"{self.confidence.value():.2f}",
+            eligible=plan["eligible_count"],
+            skipped=plan["existing_skipped"],
+        )
+        answer = QMessageBox.question(
+            self,
+            tr("annotation.ai.auto_split"),
+            summary,
+            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
+        )
+        if answer == QMessageBox.StandardButton.Ok:
+            self.inference.start_batch(self.confidence.value())
+
+    def _override_mismatch(self) -> None:
+        answer = QMessageBox.warning(
+            self,
+            tr("annotation.ai.class_mismatch"),
+            tr("annotation.ai.override_warning"),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self.inference.override_class_mismatch()
+            self._inference_state_changed(self.inference.state.value)
+
+    def _model_loaded(self, details: dict) -> None:
+        compatibility = str(details.get("compatibility", "unknown"))
+        device = str(details.get("actual_device", ""))
+        cuda_available = details.get("cuda_available")
+        self._sync_device_options(cuda_available)
+        status = tr(
+            f"annotation.ai.compatibility.{compatibility}",
+            device=device,
+        )
+        if compatibility in {"id_match_name_mismatch", "class_count_mismatch"}:
+            dataset_classes = self.service.dataset.classes if self.service.dataset else {}
+            status += "\n" + tr(
+                "annotation.ai.dataset_classes",
+                classes=self._format_class_names(dataset_classes),
+            )
+            status += "\n" + tr(
+                "annotation.ai.model_classes",
+                classes=self._format_class_names(self.inference.model_classes),
+            )
+        if cuda_available is False:
+            status += "\n" + tr("annotation.ai.cpu_warning")
+        self.inference_status.setText(status)
+        self._inference_state_changed(self.inference.state.value)
+
+    def _sync_device_options(self, cuda_available: object) -> None:
+        if cuda_available is not False:
+            return
+        gpu_index = self.device_combo.findData("0")
+        if gpu_index >= 0:
+            self.device_combo.removeItem(gpu_index)
+
+    @staticmethod
+    def _format_class_names(values: dict[int, str]) -> str:
+        return ", ".join(f"{class_id} {name}" for class_id, name in sorted(values.items()))
+
+    def _inference_state_changed(self, state_value: str) -> None:
+        state = InferenceState(state_value)
+        busy = state in {
+            InferenceState.STARTING_WORKER,
+            InferenceState.LOADING,
+            InferenceState.BUSY,
+            InferenceState.STOPPING,
+        }
+        batch_running = self.inference.batch_running
+        compatible = self.inference.model_usable
+        self.load_model_button.setEnabled(not busy)
+        self.predict_button.setEnabled(
+            compatible and self.service.document is not None and not busy
+        )
+        self.auto_annotate_button.setEnabled(
+            compatible and self.service.dataset is not None and not busy
+        )
+        self.cancel_inference_button.setEnabled(batch_running)
+        self.override_button.setVisible(
+            self.inference.compatibility in {"id_match_name_mismatch", "unknown"}
+            and state is InferenceState.READY
+            and not self.inference.compatibility_override
+        )
+        runtime_missing = not bool(self.inference.runtime_info().get("available"))
+        self.runtime_button.setVisible(runtime_missing)
+        if state not in {InferenceState.READY, InferenceState.ERROR}:
+            self.inference_status.setText(tr(f"annotation.ai.state.{state.value}"))
+        self._set_navigation_enabled(not busy)
+
+    def _inference_error(self, code: str, message: str) -> None:
+        if code == "cuda_unavailable":
+            self._sync_device_options(False)
+        self.inference_status.setText(tr(f"annotation.ai.error.{code}"))
+        self._append_inference_log(f"{code}: {message}")
+        self._inference_state_changed(self.inference.state.value)
+
+    def _append_inference_log(self, text: str) -> None:
+        if not text:
+            return
+        self.inference_log.setVisible(True)
+        self.inference_log.appendPlainText(text)
+        scrollbar = self.inference_log.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
+
+    def _batch_progressed(self, progress: dict) -> None:
+        eligible = int(progress.get("eligible", 0))
+        processed = int(progress.get("processed", 0))
+        self.batch_progress.setVisible(True)
+        self.batch_progress.setMaximum(max(eligible, 1))
+        self.batch_progress.setValue(processed)
+        self.batch_progress.setFormat(
+            tr(
+                "annotation.ai.progress",
+                processed=processed,
+                eligible=eligible,
+                created=progress.get("created", 0),
+                no_detection=progress.get("no_detection", 0),
+                skipped=progress.get("skipped", 0),
+                errors=len(progress.get("errors", [])),
+            )
+        )
+        self._inference_state_changed(self.inference.state.value)
+
+    def _batch_finished(self, report: dict) -> None:
+        self._populate_images(keep_row=True)
+        if self.service.index >= 0:
+            self.service.load_image(self.service.index)
+            self._render_document()
+        self.inference_status.setText(
+            tr(
+                "annotation.ai.batch_finished",
+                status=report.get("status", ""),
+                processed=report.get("processed", 0),
+                created=report.get("created", 0),
+                no_detection=report.get("no_detection", 0),
+                remaining=report.get("remaining", 0),
+            )
+        )
+        self._inference_state_changed(self.inference.state.value)
+
+    def _set_navigation_enabled(self, enabled: bool) -> None:
+        self.open_button.setEnabled(enabled)
+        self.split_combo.setEnabled(enabled)
+        self.image_list.setEnabled(enabled)
+        self.previous_button.setEnabled(enabled and self.service.index > 0)
+        self.next_button.setEnabled(
+            enabled and self.service.index + 1 < len(self.service.images)
+        )
+
+    def _inference_busy(self) -> bool:
+        return self.inference.state in {
+            InferenceState.STARTING_WORKER,
+            InferenceState.LOADING,
+            InferenceState.BUSY,
+            InferenceState.STOPPING,
+        }
 
     def save(self, *, repair: bool = False) -> bool:
         document = self.service.document
@@ -230,16 +587,26 @@ class AnnotationPage(QWidget):
         except (OSError, ValueError) as exc:
             QMessageBox.critical(self, tr("common.error"), str(exc))
             return False
+        if document.metadata_warning:
+            QMessageBox.warning(
+                self,
+                tr("common.warning"),
+                tr("annotation.metadata_save_warning"),
+            )
         self._populate_images(keep_row=True)
         self._render_document()
         return True
 
     def previous_image(self) -> None:
+        if self._inference_busy():
+            return
         if self._before_navigation() and self.service.index > 0:
             self.service.load_image(self.service.index - 1)
             self._sync_current()
 
     def next_image(self) -> None:
+        if self._inference_busy():
+            return
         if (
             self._before_navigation()
             and self.service.index + 1 < len(self.service.images)
@@ -329,6 +696,8 @@ class AnnotationPage(QWidget):
         self._render_document(select=self.service.selected_index)
 
     def _split_changed(self) -> None:
+        if self._inference_busy():
+            return
         split = self.split_combo.currentData()
         if not split or self.service.dataset is None or split == self.service.split:
             return
@@ -341,6 +710,8 @@ class AnnotationPage(QWidget):
         self._render_document()
 
     def _image_selected(self, row: int) -> None:
+        if self._inference_busy():
+            return
         if row < 0 or row == self.service.index or self.service.dataset is None:
             return
         if not self._resolve_dirty():
@@ -387,7 +758,15 @@ class AnnotationPage(QWidget):
         self.image_list.clear()
         for image in self.service.images:
             status = self.service.image_status(image)
-            item = QListWidgetItem(f"{STATUS_SYMBOLS[status]}  {image.name}")
+            source = self.service.image_source(image)
+            ai = (
+                " AI"
+                if source is AnnotationSource.MODEL_GENERATED
+                else " AI+Human"
+                if source is AnnotationSource.MODEL_ASSISTED
+                else ""
+            )
+            item = QListWidgetItem(f"{STATUS_SYMBOLS[status]}{ai}  {image.name}")
             if status is AnnotationStatus.EMPTY:
                 item.setToolTip(tr("annotation.tooltip.empty"))
             item.setData(Qt.ItemDataRole.UserRole, str(image))
@@ -411,7 +790,13 @@ class AnnotationPage(QWidget):
             class_id: QColor(CLASS_COLORS[class_id % len(CLASS_COLORS)])
             for class_id in classes
         }
-        loaded = self.canvas.load_image(str(document.image_path), document.boxes, colors)
+        loaded = self.canvas.load_image(
+            str(document.image_path),
+            document.boxes,
+            colors,
+            document.box_metadata,
+            classes,
+        )
         if select is not None:
             self.canvas.select_box(select)
         self.issue_label.setText(
@@ -420,7 +805,10 @@ class AnnotationPage(QWidget):
         )
         if loaded:
             status = tr("annotation.status." + document.status.value)
-            self.status_label.setText(f"{document.image_path.name} — {status}")
+            source = tr(f"annotation.source.{document.source.value}")
+            self.status_label.setText(
+                f"{document.image_path.name} — {status} · {source}"
+            )
         else:
             self.status_label.setText(tr("annotation.image_unreadable"))
             current_item = self.image_list.item(self.service.index)
@@ -434,6 +822,7 @@ class AnnotationPage(QWidget):
         self.previous_button.setEnabled(self.service.index > 0)
         self.next_button.setEnabled(self.service.index + 1 < len(self.service.images))
         self.save_button.setEnabled(document.dirty or bool(document.invalid_lines))
+        self._inference_state_changed(self.inference.state.value)
         self._update_summary()
 
     def _render_empty(self) -> None:
@@ -528,3 +917,7 @@ class AnnotationPage(QWidget):
                 split = self.split_combo.itemData(index)
                 self.split_combo.setItemText(index, tr(f"annotation.split.{split}"))
             self._render_document(select=self.service.selected_index)
+        if self.inference.state is InferenceState.READY:
+            self._model_loaded(self.inference.model_summary())
+        elif self.inference.cuda_available is False:
+            self._sync_device_options(False)

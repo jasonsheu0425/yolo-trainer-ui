@@ -85,7 +85,11 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
         self.train_page = TrainPage(self.config, self.services.training)
         self.analysis_page = TrainingAnalysisPage(self.services.analysis)
-        self.annotation_page = AnnotationPage(self.config, self.services.annotation)
+        self.annotation_page = AnnotationPage(
+            self.config,
+            self.services.annotation,
+            self.services.annotation_inference,
+        )
         self.simple_page = SimpleModePage(self.config, self.train_page)
         self.dataset_page = DatasetPage()
         self.dataset_builder_page = DatasetBuilderPage(self.config)
@@ -117,6 +121,7 @@ class MainWindow(QMainWindow):
         self.simple_page.dataset_details_requested.connect(lambda: self._open_page("nav.dataset"))
         self.runtime_page.runtime_changed.connect(self._runtime_changed)
         self.runtime_page.open_settings_requested.connect(lambda: self._open_page("nav.settings"))
+        self.annotation_page.runtime_requested.connect(self._open_runtime)
         for page in (self.train_page, self.predict_page, self.validate_page, self.export_page):
             page.runtime_required.connect(self._open_runtime)
         self.train_page.dataset_selected.connect(self.dataset_page.set_yaml_path)
@@ -220,6 +225,7 @@ class MainWindow(QMainWindow):
         if not self.annotation_page.confirm_close():
             event.ignore()
             return
+        self.services.annotation_inference.shutdown()
         self.dataset_builder_page.shutdown()
         self.runtime_page.shutdown()
         if self.train_page.runner.running:

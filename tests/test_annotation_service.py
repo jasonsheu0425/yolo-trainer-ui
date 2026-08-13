@@ -6,7 +6,13 @@ import pytest
 from PIL import Image
 
 from core.dataset_checker import check_dataset
-from domain.annotation import AnnotationStatus, BoundingBox, PixelBox
+from domain.annotation import (
+    AnnotationSource,
+    AnnotationStatus,
+    BoundingBox,
+    ModelPrediction,
+    PixelBox,
+)
 from persistence.yolo_annotation_store import YoloAnnotationStore
 from services.annotation_service import AnnotationService
 
@@ -161,3 +167,62 @@ def test_undo_redo_for_create_resize_delete_class_and_paste(tmp_path):
     assert service.undo() and service.document.boxes[0].class_id == 0
     service.delete_box(0)
     assert service.undo() and len(service.document.boxes) == 1
+
+
+def test_manual_generated_assisted_unknown_transitions_and_prediction_batch_undo(
+    tmp_path,
+):
+    service = AnnotationService(YoloAnnotationStore(tmp_path / "backups"))
+    service.open_dataset(make_dataset(tmp_path))
+    assert service.document.source is AnnotationSource.UNKNOWN
+    service.create_box(BoundingBox(0, .5, .5, .2, .2))
+    assert service.document.source is AnnotationSource.MANUAL
+    service.save()
+    service.load_image(1)
+    predictions = [
+        ModelPrediction(BoundingBox(0, .5, .5, .2, .2), .9, "best.pt")
+    ]
+    service.apply_predictions(predictions)
+    assert service.document.source is AnnotationSource.MODEL_GENERATED
+    assert service.document.box_metadata[0].confidence == .9
+    assert service.undo() and service.document.boxes == []
+    assert service.redo() and len(service.document.boxes) == 1
+    service.move_box_pixels(0, 10, 10, 640, 480)
+    assert service.document.source is AnnotationSource.MODEL_ASSISTED
+    assert service.document.box_metadata[0].confidence is None
+    service.save()
+    service.load_image(1)
+    assert service.document.source is AnnotationSource.MODEL_ASSISTED
+
+
+def test_replace_predictions_is_one_undo_and_existing_unknown_becomes_assisted(
+    tmp_path,
+):
+    service = AnnotationService(YoloAnnotationStore(tmp_path / "backups"))
+    yaml = make_dataset(tmp_path)
+    label = tmp_path / "labels" / "train" / "0.txt"
+    label.parent.mkdir(parents=True)
+    label.write_text("0 0.5 0.5 0.2 0.2\n", encoding="utf-8")
+    service.open_dataset(yaml)
+    original = service.document.boxes.copy()
+    prediction = ModelPrediction(BoundingBox(1, .4, .4, .1, .1), .8, "best.pt")
+    service.apply_predictions([prediction], replace=True)
+    assert service.document.source is AnnotationSource.MODEL_ASSISTED
+    assert service.document.boxes == [prediction.box]
+    assert service.undo() and service.document.boxes == original
+
+
+def test_metadata_failure_does_not_undo_atomic_label_save(tmp_path, monkeypatch):
+    service = AnnotationService(YoloAnnotationStore(tmp_path / "backups"))
+    service.open_dataset(make_dataset(tmp_path))
+
+    def deny_metadata(*_args, **_kwargs):
+        raise PermissionError("metadata is read-only")
+
+    monkeypatch.setattr(service.metadata_store, "save_image", deny_metadata)
+    prediction = ModelPrediction(BoundingBox(0, .5, .5, .2, .2), .9, "best.pt")
+    label = service.save_generated_predictions(
+        service.document.image_path, [prediction]
+    )
+    assert label is not None and label.is_file()
+    assert "metadata is read-only" in service.last_metadata_warning

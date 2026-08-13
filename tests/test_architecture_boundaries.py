@@ -44,3 +44,23 @@ def test_annotation_canvas_never_writes_label_text():
         source = path.read_text(encoding="utf-8")
         assert "write_text(" not in source
         assert "open(" not in source
+
+
+def test_model_assistance_dependency_boundaries():
+    domain_source = (ROOT / "domain" / "annotation.py").read_text(encoding="utf-8")
+    metadata_source = (ROOT / "persistence" / "annotation_metadata_store.py").read_text(encoding="utf-8")
+    worker_source = (ROOT / "runtime_workers" / "annotation_inference_worker.py").read_text(encoding="utf-8")
+    assert "workers" not in imported_roots(ROOT / "domain" / "annotation.py")
+    assert "ui" not in domain_source and "ui" not in metadata_source
+    assert "PySide6" not in worker_source
+    for path in (ROOT / "ui" / "annotation").glob("*.py"):
+        imports = imported_roots(path)
+        assert "torch" not in imports and "ultralytics" not in imports
+    inference_paths = [
+        ROOT / "services" / "annotation_inference_service.py",
+        ROOT / "workers" / "annotation_inference_controller.py",
+        ROOT / "core" / "annotation_worker_path.py",
+    ]
+    for path in inference_paths:
+        imports = imported_roots(path)
+        assert "torch" not in imports and "ultralytics" not in imports, path

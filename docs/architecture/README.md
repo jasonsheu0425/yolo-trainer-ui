@@ -39,9 +39,26 @@ The canvas only reports pixel-space user intent. `AnnotationService` owns the
 current-image session, mutations, dirty state, and undo/redo snapshots. Domain
 conversion functions are the sole normalized/pixel geometry path, while
 `YoloAnnotationStore` owns label path resolution, parsing, validation, atomic
-save, and repair backups. A future v0.13 inference worker can enter at the
-service boundary; inference and model-generated metadata are intentionally not
-implemented in v0.12 widgets or persistence.
+save, and repair backups.
+
+v0.13 adds local inference at the service boundary:
+
+```mermaid
+flowchart TD
+    AnnotationUI --> AnnotationInferenceService
+    AnnotationInferenceService --> Controller[QProcess worker controller]
+    Controller -->|JSONL stdin/stdout| Script[Bundled runtime worker script]
+    Script --> Runtime[Configured or managed Python]
+    Runtime --> Backend[Ultralytics / PyTorch]
+    AnnotationInferenceService --> AnnotationService
+    AnnotationService --> Metadata[AnnotationMetadataStore]
+```
+
+The model remains in the external worker until reload, failure, or app close.
+Stdout is protocol-only and runtime logs use stderr. The GUI inference path
+does not import Ultralytics or PyTorch. Validated predictions enter the existing
+service mutation/undo path, while app-managed metadata stays separate from
+training labels.
 
 Architecture principles: UI displays state and expresses intent; services
 coordinate workflows; core algorithms do not import UI; persistence owns

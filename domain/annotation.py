@@ -15,6 +15,13 @@ class AnnotationStatus(str, Enum):
     MODIFIED = "modified"
 
 
+class AnnotationSource(str, Enum):
+    MANUAL = "manual"
+    MODEL_GENERATED = "model_generated"
+    MODEL_ASSISTED = "model_assisted"
+    UNKNOWN = "unknown"
+
+
 @dataclass(frozen=True)
 class BoundingBox:
     """Canonical YOLO-normalized detection box."""
@@ -43,6 +50,31 @@ class BoundingBox:
 
     def with_class(self, class_id: int) -> "BoundingBox":
         return replace(self, class_id=class_id)
+
+
+@dataclass(frozen=True)
+class ModelPrediction:
+    """Validated model proposal kept separate from canonical label geometry."""
+
+    box: BoundingBox
+    confidence: float
+    model_identity: str = ""
+    generated_at: str = ""
+
+    def is_valid(self, class_count: int | None = None) -> bool:
+        return (
+            self.box.is_valid(class_count)
+            and math.isfinite(self.confidence)
+            and 0.0 <= self.confidence <= 1.0
+        )
+
+
+@dataclass(frozen=True)
+class BoxMetadata:
+    source: AnnotationSource = AnnotationSource.UNKNOWN
+    confidence: float | None = None
+    model_identity: str = ""
+    generated_at: str = ""
 
 
 @dataclass(frozen=True)
@@ -113,6 +145,10 @@ class AnnotationDocument:
     invalid_lines: list[InvalidLabelLine] = field(default_factory=list)
     label_existed: bool = False
     dirty: bool = False
+    box_metadata: list[BoxMetadata] = field(default_factory=list)
+    source: AnnotationSource = AnnotationSource.UNKNOWN
+    last_prediction_status: str = ""
+    metadata_warning: str = ""
 
     @property
     def status(self) -> AnnotationStatus:

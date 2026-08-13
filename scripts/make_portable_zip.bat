@@ -3,7 +3,7 @@ setlocal
 cd /d "%~dp0\.."
 set "APP_DIR=dist\YOLO-Trainer-UI"
 set "ARTIFACT_DIR=release_artifacts"
-set "ZIP_PATH=%ARTIFACT_DIR%\YOLO-Trainer-UI-v0.12.0-windows-portable.zip"
+set "ZIP_PATH=%ARTIFACT_DIR%\YOLO-Trainer-UI-v0.13.0-windows-portable.zip"
 if not exist "%APP_DIR%" (
   echo ERROR: dist\YOLO-Trainer-UI does not exist. Run build_pyinstaller_onedir.bat first.
   exit /b 1
@@ -18,9 +18,15 @@ if not exist "%APP_DIR%\_internal" (
   echo ERROR: Required PyInstaller _internal folder is missing.
   exit /b 1
 )
+for %%F in ("_internal\runtime_workers\annotation_inference_worker.py" "_internal\runtime_workers\annotation_inference_protocol.py") do (
+  if not exist "%APP_DIR%\%%~F" (
+    echo ERROR: Required annotation worker resource is missing: %%~F
+    exit /b 1
+  )
+)
 if exist "%APP_DIR%\configs\app_settings.json" del /q "%APP_DIR%\configs\app_settings.json"
 if not exist "%ARTIFACT_DIR%" mkdir "%ARTIFACT_DIR%" || exit /b 1
 if exist "%ZIP_PATH%" del /q "%ZIP_PATH%" || exit /b 1
-powershell -NoProfile -Command "$badDirs = Get-ChildItem -LiteralPath '%APP_DIR%' -Recurse -Directory | Where-Object { $_.Name -in 'runs','datasets','build','dist','runtime','.venv','venv','models','weights' }; $badFiles = Get-ChildItem -LiteralPath '%APP_DIR%' -Recurse -File | Where-Object { $_.Name -eq 'app_settings.json' -or $_.Extension -in '.pt','.onnx','.engine' }; $bad = @($badDirs) + @($badFiles); if ($bad) { $bad.FullName | Write-Error; exit 1 }; Compress-Archive -Path '%APP_DIR%\*' -DestinationPath '%ZIP_PATH%' -CompressionLevel Optimal"
+powershell -NoProfile -Command "$badDirs = Get-ChildItem -LiteralPath '%APP_DIR%' -Recurse -Directory | Where-Object { $_.Name -in '.git','runs','datasets','labels','build','dist','runtime','.venv','venv','models','weights','annotation_metadata','annotation_reports','backups','test-temp' }; $badFiles = Get-ChildItem -LiteralPath '%APP_DIR%' -Recurse -File | Where-Object { $_.Name -eq 'app_settings.json' -or $_.Name -like 'annotation_metadata*.json' -or $_.Name -like 'annotation_report*.json' -or $_.Extension -in '.pt','.onnx','.engine' }; $bad = @($badDirs) + @($badFiles); if ($bad) { $bad.FullName | Write-Error; exit 1 }; Compress-Archive -Path '%APP_DIR%\*' -DestinationPath '%ZIP_PATH%' -CompressionLevel Optimal"
 if errorlevel 1 exit /b 1
 echo Portable ZIP created at %ZIP_PATH%.

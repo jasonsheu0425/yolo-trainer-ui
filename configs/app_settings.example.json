@@ -10,5 +10,8 @@
   "last_dataset_yaml": "",
   "last_model_path": "",
   "last_annotation_dataset": "",
-  "annotation_autosave": true
+  "annotation_autosave": true,
+  "last_annotation_model": "",
+  "annotation_confidence": 0.25,
+  "annotation_device": "auto"
 }

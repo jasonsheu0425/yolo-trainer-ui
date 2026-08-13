@@ -5,7 +5,7 @@ from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPen, QPixmap, QWheelEvent
 from PySide6.QtWidgets import QGraphicsPixmapItem, QGraphicsScene, QGraphicsView
 
-from domain.annotation import BoundingBox, PixelBox, yolo_to_xyxy
+from domain.annotation import AnnotationSource, BoundingBox, BoxMetadata, PixelBox, yolo_to_xyxy
 from ui.annotation.bounding_box_item import BoundingBoxItem, MIN_BOX_PIXELS
 
 
@@ -41,6 +41,8 @@ class AnnotationCanvas(QGraphicsView):
         path: str,
         boxes: list[BoundingBox],
         colors: dict[int, QColor],
+        metadata: list[BoxMetadata] | None = None,
+        class_names: dict[int, str] | None = None,
     ) -> bool:
         same_image = path == self._image_path and not self._cached_pixmap.isNull()
         pixmap = self._cached_pixmap if same_image else QPixmap(path)
@@ -59,11 +61,20 @@ class AnnotationCanvas(QGraphicsView):
         self._pixmap_item.setZValue(-10)
         for index, box in enumerate(boxes):
             pixel = yolo_to_xyxy(box, *self.image_size)
+            details = metadata[index] if metadata and index < len(metadata) else BoxMetadata()
+            class_name = (class_names or {}).get(box.class_id, str(box.class_id))
+            if details.confidence is not None:
+                label = f"{class_name} · {details.confidence:.0%} · AI"
+            elif details.source is AnnotationSource.MODEL_ASSISTED:
+                label = f"{class_name} · AI+Human"
+            else:
+                label = class_name
             item = BoundingBoxItem(
                 index,
                 QRectF(pixel.x1, pixel.y1, pixel.width, pixel.height),
                 colors.get(box.class_id, QColor("#ef4444")),
                 self.scene().sceneRect(),
+                label,
             )
             item.geometry_committed.connect(self._item_changed)
             item.selected_box.connect(self._item_selected)

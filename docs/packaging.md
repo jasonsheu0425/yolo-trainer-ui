@@ -16,3 +16,9 @@ For v0.12, also verify that `ui.annotation`, `services.annotation_service`,
 `domain.annotation`, `persistence.yolo_annotation_store`, and Qt image format
 plugins are present. The frozen smoke must construct the Annotation page and
 load a temporary YOLO dataset without importing anything from the source tree.
+
+For v0.13, `annotation_inference_worker.py` and its protocol module must be
+physical files under `_internal/runtime_workers`. Resolve and launch them with
+the external configured runtime in both the build folder and a clean extracted
+ZIP. The package must not include PyTorch, Ultralytics, a managed runtime,
+models, or user annotation metadata/reports.
