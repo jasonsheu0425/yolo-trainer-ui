@@ -31,6 +31,7 @@ from ui.widgets import PageHeader, PathPicker, WheelSafeComboBox, WheelSafeSpinB
 class TrainPage(QWidget):
     dataset_selected = Signal(str)
     results_found = Signal(str)
+    analysis_requested = Signal(str)
     runtime_required = Signal()
 
     PRESETS = {
@@ -328,6 +329,11 @@ class TrainPage(QWidget):
         self.run_folder_open.setEnabled(False)
         self.run_folder_open.clicked.connect(lambda: self._open_run_artifact("run_folder", True))
         grid.addWidget(self.run_folder_open, 0, 2, 1, 2)
+        self.analyze_results_button = QPushButton()
+        bind_text(self.analyze_results_button, "train.analyze_results")
+        self.analyze_results_button.setEnabled(False)
+        self.analyze_results_button.clicked.connect(self._request_analysis)
+        grid.addWidget(self.analyze_results_button, 0, 4)
         self.run_file_values: dict[str, QLineEdit] = {}
         self.run_file_buttons: dict[str, tuple[QPushButton, QPushButton]] = {}
         for row, name in enumerate(RUN_ARTIFACTS, 1):
@@ -354,11 +360,17 @@ class TrainPage(QWidget):
         root = artifacts.get("run_folder")
         self.run_folder_value.setText(str(root) if root else "Not found")
         self.run_folder_open.setEnabled(root is not None)
+        self.analyze_results_button.setEnabled(root is not None and artifacts.get("results.csv") is not None)
         for name in RUN_ARTIFACTS:
             path = artifacts.get(name)
             self.run_file_values[name].setText(str(path) if path else "Not found")
             for button in self.run_file_buttons[name]:
                 button.setEnabled(path is not None)
+
+    def _request_analysis(self) -> None:
+        root = self.last_run_artifacts.get("run_folder")
+        if root and root.is_dir() and self.last_run_artifacts.get("results.csv"):
+            self.analysis_requested.emit(str(root))
 
     def _open_run_artifact(self, name: str, folder: bool) -> None:
         path = self.last_run_artifacts.get(name)

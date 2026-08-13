@@ -5,7 +5,7 @@ from pathlib import Path
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTimer, Signal
 from PySide6.QtWidgets import QGridLayout, QGroupBox, QHBoxLayout, QLabel, QMessageBox, QPushButton, QTabWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
 
 from core.config_manager import ConfigManager
@@ -15,6 +15,8 @@ from ui.widgets import PageHeader, PathPicker, bind_text
 
 
 class MonitorPage(QWidget):
+    analysis_requested = Signal(str)
+
     def __init__(self, config: ConfigManager | None = None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.config = config
@@ -99,7 +101,7 @@ class MonitorPage(QWidget):
         headers = [
             "Run Name", "Type", "Path", "best.pt", "last.pt", "results.csv",
             "Hard Cases", "Error Mining", "mAP50", "mAP50-95", "Precision", "Recall",
-            "Created / Modified", "Open Folder",
+            "Created / Modified", "Open Folder", "Analyze",
         ]
         self.runs_table = QTableWidget(0, len(headers))
         self.runs_table.setHorizontalHeaderLabels(headers)
@@ -154,6 +156,13 @@ class MonitorPage(QWidget):
             bind_text(open_button, "common.open_folder")
             open_button.clicked.connect(lambda _checked=False, path=run["path"]: self._open_run_folder(path))
             self.runs_table.setCellWidget(row, len(values), open_button)
+            if run["type"] == "train":
+                analyze_button = QPushButton()
+                bind_text(analyze_button, "monitor.analyze_run")
+                analyze_button.clicked.connect(
+                    lambda _checked=False, path=run["path"]: self.analysis_requested.emit(str(path))
+                )
+                self.runs_table.setCellWidget(row, len(values) + 1, analyze_button)
         self.runs_table.setSortingEnabled(True)
         root_path = Path(root).expanduser() if root else None
         if root_path is None or not root_path.is_dir():

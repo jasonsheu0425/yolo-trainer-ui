@@ -30,10 +30,9 @@ def test_mode_switch_persistence_and_profile_mapping(tmp_path):
     values = window.train_page.training_values()
     assert (values["model"], values["epochs"], values["imgsz"], values["batch"]) == ("yolov8s.pt", 100, 640, 16)
     window.set_ui_mode("advanced")
-    assert window.navigation.count() == 10
+    assert window.navigation.count() == 11
     assert window.train_page.epochs.value() == 100
     window.close()
-
 
 def test_language_and_advanced_values_are_preserved():
     app()

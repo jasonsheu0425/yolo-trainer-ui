@@ -39,3 +39,11 @@ Dataset Check
 ```
 
 Use **Preview Build** before building a dataset. A cancelled build may leave already copied files, so use a new empty output folder for large jobs.
+# Training Result Analysis
+
+After a training run completes, use **Analyze Results** on the Train page, or
+scan `runs/detect` in Run Browser and select **Analyze Run**. The analysis page
+uses existing `results.csv` only; it never retrains or validates. It caches
+derived output as `training_analysis.json` and previews available curves and
+confusion matrices. See [Training Analysis](training_analysis.md) for the
+heuristic and cache behavior.

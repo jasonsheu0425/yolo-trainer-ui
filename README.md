@@ -108,7 +108,7 @@ Dataset Check
 → Train with the new data.yaml
 ```
 
-More detail is available in [Usage](docs/usage.md) and [Troubleshooting](docs/troubleshooting.md).
+More detail is available in [Usage](docs/usage.md), [Training Analysis](docs/training_analysis.md), and [Troubleshooting](docs/troubleshooting.md).
 
 ## GitHub releases and portable ZIP
 
@@ -126,7 +126,7 @@ The portable app contains its UI runtime, while YOLO is resolved separately from
 
 ## Development status
 
-Current version: **v0.8.1 Runtime Setup & Diagnostics** (`0.8.1`).
+Current version: **v0.11.0 Training Result Analysis** (`0.11.0`).
 
 Development dependencies are listed in `requirements-dev.txt`. Before publishing a release, follow the [Release Checklist](docs/release_checklist.md).
 
@@ -137,6 +137,7 @@ Development dependencies are listed in `requirements-dev.txt`. Before publishing
 - [Troubleshooting](docs/troubleshooting.md)
 - [Packaging](docs/packaging.md)
 - [Runtime setup](docs/runtime_setup.md)
+- [Training analysis](docs/training_analysis.md)
 - [Release checklist](docs/release_checklist.md)
 - [Release notes template](docs/release_notes_template.md)
 

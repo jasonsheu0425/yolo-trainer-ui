@@ -5,3 +5,9 @@ Run `scripts\build_pyinstaller_onedir.bat`, then
 tested only after extraction to a folder outside the repository. It contains
 the executable, `_internal`, i18n resources, documentation, and the settings
 example; it intentionally excludes local settings, runtimes, models, and runs.
+# Training Analysis packaging check
+
+The frozen build must include `core/training_result_analyzer.py`,
+`ui/training_analysis_page.py`, and both `i18n` JSON files. Verify that the
+portable app builds the Training Analysis page and can open a run independently
+of the source repository.

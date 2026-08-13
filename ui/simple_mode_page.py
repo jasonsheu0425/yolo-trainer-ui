@@ -249,7 +249,8 @@ class SimpleModePage(QWidget):
 
     def _training_finished(self, code: int, _status: int) -> None:
         self.stop_button.setEnabled(False)
-        self.results_button.setEnabled(code == 0)
+        has_results = self.train_page.last_run_artifacts.get("results.csv") is not None
+        self.results_button.setEnabled(code == 0 and has_results)
         self.training_status.setText(tr("simple.training.completed") if code == 0 else tr("simple.training.failed"))
         self._refresh_statuses()
 
