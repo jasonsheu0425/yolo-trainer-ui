@@ -18,6 +18,8 @@ The application calls the Ultralytics `yolo` command. Verify it with:
 yolo checks
 ```
 
+Alternatively, start the application, open **Runtime / Environment**, and run diagnostics. You can select existing `python.exe` and `yolo.exe` paths in Settings or create a per-user managed environment without administrator privileges. See [Runtime setup](runtime_setup.md).
+
 ## CPU-only environments
 
 For a machine that does not need CUDA, use the official [PyTorch installation selector](https://pytorch.org/get-started/locally/) to install CPU builds of `torch` and `torchvision`, then run:

@@ -16,6 +16,7 @@ Long-running YOLO commands use `QProcess`, while Dataset Builder uses a `QThread
 - **Error Mining:** compares predictions with ground truth using IoU-based hard-case classification.
 - **Report Viewer:** filters hard-case reports, previews images, and opens prediction or ground-truth labels.
 - **Dataset Builder:** builds a new dataset version from a base dataset and selected hard cases without changing the source dataset.
+- **Runtime / Environment:** discovers Python and YOLO, diagnoses Ultralytics, PyTorch, CUDA, and GPU support, and can create a per-user managed runtime.
 
 ## Screenshots
 
@@ -34,6 +35,12 @@ python main.py
 ```
 
 See [Installation](docs/installation.md) for CPU and GPU environment guidance.
+
+## Runtime setup
+
+Open **Runtime / Environment** and choose **Run Diagnostics** to inspect the Python source, YOLO command, Ultralytics and PyTorch versions, CUDA status, and GPU name. Existing environments are resolved in this order: explicit Settings overrides, the managed runtime, Windows `py`, and commands on `PATH`.
+
+If YOLO is missing, **Create Managed YOLO Environment** creates a virtual environment under the current user's Qt application-data folder and installs Ultralytics there. It does not need administrator rights and does not install CUDA Toolkit or force a particular PyTorch CUDA wheel. See [Runtime setup](docs/runtime_setup.md).
 
 ## GPU and CUDA
 
@@ -88,9 +95,9 @@ More detail is available in [Usage](docs/usage.md) and [Troubleshooting](docs/tr
 
 ## GitHub releases and portable ZIP
 
-The v0.8 prerelease provides a PyInstaller **onedir** portable ZIP named `YOLO-Trainer-UI-v0.8.0-windows-portable.zip`. Download it from [GitHub Releases](https://github.com/jasonsheu0425/yolo-trainer-ui/releases), extract the entire archive, and run `YOLO-Trainer-UI.exe` beside its `_internal` folder.
+The v0.8.1 prerelease provides a PyInstaller **onedir** portable ZIP named `YOLO-Trainer-UI-v0.8.1-windows-portable.zip`. Download it from [GitHub Releases](https://github.com/jasonsheu0425/yolo-trainer-ui/releases), extract the entire archive, and run `YOLO-Trainer-UI.exe` beside its `_internal` folder.
 
-The archive is intentionally larger than the source because it contains Python, Qt, and required ML/data-processing dependencies. The first launch can be slower while Windows loads the files or Windows Defender scans the extracted folder. YOLO commands use the executable configured in Settings; GPU workflows still require that external YOLO environment to have a compatible NVIDIA driver and PyTorch/CUDA support. See [Packaging](docs/packaging.md).
+The portable app contains its UI runtime, while YOLO is resolved separately from Settings, a per-user managed environment, or `PATH`. The first launch can be slower while Windows loads files or Windows Defender scans the extracted folder. GPU workflows require a compatible NVIDIA driver and PyTorch/CUDA build in the selected YOLO environment. See [Packaging](docs/packaging.md).
 
 ## Known limitations
 
@@ -102,7 +109,7 @@ The archive is intentionally larger than the source because it contains Python, 
 
 ## Development status
 
-Current version: **v0.8 Portable Windows Build** (`0.8.0`).
+Current version: **v0.8.1 Runtime Setup & Diagnostics** (`0.8.1`).
 
 Development dependencies are listed in `requirements-dev.txt`. Before publishing a release, follow the [Release Checklist](docs/release_checklist.md).
 
@@ -112,6 +119,7 @@ Development dependencies are listed in `requirements-dev.txt`. Before publishing
 - [Usage](docs/usage.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Packaging](docs/packaging.md)
+- [Runtime setup](docs/runtime_setup.md)
 - [Release checklist](docs/release_checklist.md)
 - [Release notes template](docs/release_notes_template.md)
 

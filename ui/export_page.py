@@ -3,17 +3,22 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QCheckBox, QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QMessageBox, QPushButton, QSpinBox, QTextEdit, QVBoxLayout, QWidget
 
 from core.config_manager import ConfigManager
 from core.exporter_process import ExporterProcess
-from ui.widgets import PageHeader, PathPicker
+from core.runtime_manager import RuntimeManager
+from ui.widgets import PageHeader, PathPicker, show_runtime_required
 
 
 class ExportPage(QWidget):
+    runtime_required = Signal()
+
     def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.config = config
+        self.runtime_manager = RuntimeManager(config)
         self.runner = ExporterProcess(self)
         self.runner.output.connect(self._append_log)
         self.runner.state_changed.connect(self._set_running)
@@ -87,7 +92,13 @@ class ExportPage(QWidget):
         self.output_path = None
         self.open_button.setEnabled(False)
         self.status.setText("匯出中…")
-        self.runner.start(str(self.config.get("yolo_command", "yolo")), self.build_args(), path.parent)
+        program = self.runtime_manager.resolve_yolo_command()
+        if not program:
+            self.status.setText("YOLO runtime not found.")
+            if show_runtime_required(self):
+                self.runtime_required.emit()
+            return
+        self.runner.start(program, self.build_args(), path.parent)
 
     def _set_running(self, running: bool) -> None:
         self.export_button.setEnabled(not running)
@@ -116,4 +127,3 @@ class ExportPage(QWidget):
         cursor.insertText(text)
         self.log.setTextCursor(cursor)
         self.log.ensureCursorVisible()
-

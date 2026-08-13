@@ -1,5 +1,5 @@
 {
-  "yolo_command": "yolo",
+  "yolo_command": "",
   "python_executable": "",
   "runs_folder": "runs/detect",
   "default_model": "yolov8n.pt",

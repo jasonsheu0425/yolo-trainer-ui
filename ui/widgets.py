@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -72,3 +73,14 @@ class PageHeader(QWidget):
         layout.addWidget(title_label)
         layout.addWidget(description_label)
 
+
+def show_runtime_required(parent: QWidget) -> bool:
+    """Show a safe missing-runtime prompt and return whether navigation was requested."""
+    message = QMessageBox(parent)
+    message.setIcon(QMessageBox.Icon.Warning)
+    message.setWindowTitle("YOLO Runtime Required")
+    message.setText("YOLO runtime not found. Open Runtime / Environment to configure or install it.")
+    open_button = message.addButton("Open Runtime Settings", QMessageBox.ButtonRole.AcceptRole)
+    message.addButton(QMessageBox.StandardButton.Cancel)
+    message.exec()
+    return message.clickedButton() is open_button

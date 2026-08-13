@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -22,13 +23,17 @@ from PySide6.QtWidgets import (
 
 from core.config_manager import ConfigManager
 from core.predictor_process import PredictorProcess
-from ui.widgets import PageHeader, PathPicker
+from core.runtime_manager import RuntimeManager
+from ui.widgets import PageHeader, PathPicker, show_runtime_required
 
 
 class PredictPage(QWidget):
+    runtime_required = Signal()
+
     def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.config = config
+        self.runtime_manager = RuntimeManager(config)
         self.runner = PredictorProcess(self)
         self.runner.output.connect(self._append_log)
         self.runner.state_changed.connect(self._set_running)
@@ -174,7 +179,7 @@ class PredictPage(QWidget):
     def update_preview(self, *_args) -> None:
         if not hasattr(self, "preview"):
             return
-        program = str(self.config.get("yolo_command", "yolo"))
+        program = self.runtime_manager.yolo_command_for_preview()
         self.preview.setText(self.runner.preview(program, self.build_args()))
 
     def start_predict(self) -> None:
@@ -191,7 +196,12 @@ class PredictPage(QWidget):
         self.output_value.setText("Not found")
         self.open_button.setEnabled(False)
         self._known_output_dirs = set(self._output_candidates())
-        self.runner.start(str(self.config.get("yolo_command", "yolo")), self.build_args(), Path.cwd())
+        program = self.runtime_manager.resolve_yolo_command()
+        if not program:
+            if show_runtime_required(self):
+                self.runtime_required.emit()
+            return
+        self.runner.start(program, self.build_args(), Path.cwd())
 
     def _output_candidates(self) -> list[Path]:
         project = self._project_folder()

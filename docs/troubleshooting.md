@@ -6,7 +6,11 @@ Run `python -c "import torch; print(torch.cuda.is_available())"`. If it returns 
 
 ## `yolo` command not found
 
-Install `requirements.txt`, run `yolo checks`, and set **Settings → YOLO command** to `yolo` or the appropriate executable inside the virtual environment.
+Open **Runtime / Environment** and run diagnostics. Select an existing `yolo.exe` in Settings, make it available on `PATH`, or choose **Create Managed YOLO Environment**. Missing runtime errors are reported without closing the application; UI-only tools remain available.
+
+## Python is not detected
+
+In Settings, browse to a valid `python.exe`, or clear the override with **Reset to Auto Detect**. Auto detection checks the managed runtime, the Windows `py` launcher, `python.exe` on `PATH`, and finally `python3.exe`. A frozen application executable is never treated as a Python interpreter.
 
 ## Torch installation errors
 
@@ -42,4 +46,4 @@ Confirm the ZIP was fully extracted, `_internal/` is present, and Windows is not
 
 ## GPU is unavailable in the portable build
 
-Packaging does not make incompatible GPU environments compatible. Verify the NVIDIA driver and the runtime requirements for the included PyTorch build. UI-only features remain usable without CUDA, while training may fall back to the CPU.
+Open **Runtime / Environment** and confirm the selected Python's PyTorch version, Torch CUDA version, and `CUDA Available` result. The managed setup installs standard Ultralytics dependencies but does not force one CUDA wheel. Verify the NVIDIA driver, then use the official PyTorch installation selector for that managed or external Python. UI-only features remain usable without CUDA, while training may fall back to the CPU.

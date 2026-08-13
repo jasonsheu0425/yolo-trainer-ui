@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import json
-import shutil
 import sys
 from pathlib import Path
 from typing import Any
 
 
 DEFAULT_SETTINGS: dict[str, Any] = {
-    "python_executable": sys.executable,
-    "yolo_command": shutil.which("yolo") or "yolo",
+    "python_executable": "",
+    "yolo_command": "",
     "runs_folder": "runs/detect",
     "default_model": "yolov8n.pt",
     "default_device": "0",

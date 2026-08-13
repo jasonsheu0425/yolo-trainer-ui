@@ -7,12 +7,14 @@ This is the portable Windows build of YOLO Trainer UI.
 2. Start YOLO-Trainer-UI.exe from the extracted folder.
 3. The first launch may take longer while Windows loads and scans dependencies.
 4. If Windows Defender is scanning the files, please wait for it to finish.
-5. Train, Predict, Validate, and Export use the YOLO command configured in Settings.
-   Install Ultralytics separately or select an existing yolo.exe environment.
-6. GPU training requires a compatible NVIDIA driver and a supported PyTorch/CUDA environment.
-7. If CUDA is unavailable, training may use the CPU and can be very slow.
-8. runs/ and datasets/ are not included in the portable ZIP.
-9. Report problems at:
+5. Open Runtime / Environment and choose Run Diagnostics.
+6. Use an existing Python/YOLO environment, or create a managed per-user runtime.
+   The managed runtime is stored outside this portable folder and needs no administrator rights.
+7. Managed setup does not force a CUDA wheel. GPU training requires a compatible NVIDIA
+   driver and supported PyTorch/CUDA build; use the official PyTorch installation guide.
+8. If CUDA is unavailable, YOLO can run on CPU but may be significantly slower.
+9. runs/, datasets/, model weights, local settings, and managed runtimes are not included.
+10. Report problems at:
    https://github.com/jasonsheu0425/yolo-trainer-ui/issues
 
 Keep the _internal folder beside YOLO-Trainer-UI.exe. Do not run the executable

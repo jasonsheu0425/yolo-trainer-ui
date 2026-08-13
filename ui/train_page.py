@@ -9,7 +9,6 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFileDialog,
-    QFormLayout,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -26,13 +25,15 @@ from PySide6.QtWidgets import (
 
 from core.config_manager import ConfigManager
 from core.results_reader import RUN_ARTIFACTS, scan_run_folder
+from core.runtime_manager import RuntimeManager
 from core.trainer_process import TrainerProcess
-from ui.widgets import PageHeader, PathPicker
+from ui.widgets import PageHeader, PathPicker, show_runtime_required
 
 
 class TrainPage(QWidget):
     dataset_selected = Signal(str)
     results_found = Signal(str)
+    runtime_required = Signal()
 
     PRESETS = {
         "Smoke Test": {"epochs": 1, "imgsz": 640, "batch": 4, "device": "0"},
@@ -44,6 +45,7 @@ class TrainPage(QWidget):
     def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.config = config
+        self.runtime_manager = RuntimeManager(config)
         self.runner = TrainerProcess(self)
         self.runner.output.connect(self._append_log)
         self.runner.state_changed.connect(self._set_running)
@@ -230,7 +232,7 @@ class TrainPage(QWidget):
     def update_preview(self, *_args) -> None:
         if not hasattr(self, "preview"):
             return
-        program = str(self.config.get("yolo_command", "yolo"))
+        program = self.runtime_manager.yolo_command_for_preview()
         self.preview.setText(self.runner.preview(program, self.build_args()))
 
     def start_training(self) -> None:
@@ -246,7 +248,12 @@ class TrainPage(QWidget):
         except ValueError as exc:
             QMessageBox.warning(self, "Advanced Parameters", f"參數格式不正確：{exc}")
             return
-        self.runner.start(str(self.config.get("yolo_command", "yolo")), args, Path.cwd())
+        program = self.runtime_manager.resolve_yolo_command()
+        if not program:
+            if show_runtime_required(self):
+                self.runtime_required.emit()
+            return
+        self.runner.start(program, args, Path.cwd())
 
     def _set_running(self, running: bool) -> None:
         self.start_button.setEnabled(not running)
